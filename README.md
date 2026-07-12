@@ -1,40 +1,143 @@
 # showgrab
 
-Watch a [showRSS](https://showrss.info) feed and download new TV episodes
-through qBittorrent at a **preferred quality** — converging on that quality as
-releases appear, in either direction. Unlike Sonarr (which only ever *upgrades*
-quality), showgrab will also *downgrade*: if you prefer 720p and only a 1080p
-release exists yet, it grabs that and swaps to the 720p when it shows up.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/andyvalerio/showgrab)](https://github.com/andyvalerio/showgrab/releases/latest)
 
-It also refuses to re-download old episodes that get republished to the feed,
-checking the media library (Jellyfin) and the episode's air date (TVmaze)
-before grabbing, and emails a digest when something needs a human.
+Watch a [showRSS](https://showrss.info) feed and automatically download new TV
+episodes through qBittorrent, converging on a **preferred quality** as
+releases appear — in either direction. Unlike Sonarr (which only ever
+*upgrades*), showgrab also *downgrades*: if you prefer 720p and only a 1080p
+release exists yet, it grabs that now and swaps to 720p the moment it shows
+up.
 
-> **Status: early development.** Phases 1–4 are implemented and tested:
-> headless engine, real adapters, a persistent service (scheduler, SQLite,
-> dry-run mode, `/healthz`), and now a small web UI (dashboard, settings,
-> activity log, manual episode actions). Deployment (Docker image, running
-> this on the actual home server) and publishing are next — see `docs/` and
-> the architecture doc. `showgrab-serve` runs the real service, UI included;
-> `showgrab.cli` remains a stub-checks dry-run tool for eyeballing the engine
-> against a feed.
+It won't re-download old episodes that get republished to the feed — it
+checks your media library (Jellyfin) and the episode's real air date (TVmaze)
+before ever grabbing anything — and emails a digest whenever something needs
+a human to look at it.
+
+Runs as a single small container: no database server, no message queue, just
+SQLite and a web UI.
+
+## Features
+
+- **Converging quality** — set a preferred quality once; showgrab grabs
+  whatever's available now and swaps up *or* down as better releases appear.
+- **Duplicate-safe** — checks Jellyfin before grabbing, so a rescan or a
+  republished RSS item never triggers a redundant download.
+- **Old-episode filter** — cross-checks TVmaze air dates so old reposts in
+  the feed get skipped, not re-grabbed.
+- **Dry-run mode** — runs the full decision engine against your real feed and
+  library, emails you exactly what it *would* do, and touches nothing. Use it
+  to sanity-check your config before going live.
+- **Web UI** — dashboard, settings, and an activity log with manual
+  grab/retry/ignore/swap actions. No YAML file to hand-edit.
+- **Every threshold is configuration** — quality, wait times, swap window,
+  old-episode cutoff, paths — nothing is hardcoded.
+
+## Quick start (Docker)
+
+```bash
+docker run -d \
+  --name showgrab \
+  -p 8989:8989 \
+  -v showgrab-config:/config \
+  -e SHOWGRAB_FEED_URL="https://showrss.info/user/<your-id>.rss?magnets=true&namespaces=true" \
+  -e SHOWGRAB_QBITTORRENT_URL="http://qbittorrent.local:8080" \
+  -e SHOWGRAB_QBITTORRENT_USERNAME="admin" \
+  -e SHOWGRAB_QBITTORRENT_PASSWORD="changeme" \
+  -e SHOWGRAB_JELLYFIN_URL="http://jellyfin.local:8096" \
+  -e SHOWGRAB_JELLYFIN_API_KEY="your-jellyfin-api-key" \
+  -e SHOWGRAB_TV_ROOT="/downloads/tv_series" \
+  -e SHOWGRAB_DRY_RUN="true" \
+  ghcr.io/andyvalerio/showgrab:latest
+```
+
+Open `http://localhost:8989`. It starts in **dry-run mode** by default —
+watch the Activity tab and your inbox for a poll cycle or two, confirm the
+decisions look right, then flip dry-run off from the Settings page (or set
+`SHOWGRAB_DRY_RUN=false` before first start).
+
+Everything above is also editable later from the Settings page — env vars
+only *seed* the config on first start; once the container has a config file,
+the UI is the source of truth.
+
+Prefer Compose? Same env vars under `environment:`, same `/config` volume,
+same image.
+
+### Getting a version
+
+Every [release](https://github.com/andyvalerio/showgrab/releases) is a tagged
+image on GHCR: `ghcr.io/andyvalerio/showgrab:v0.1.0`, etc. `:latest` always
+tracks the newest release. If you deploy with Argo CD, point
+[Argo CD Image Updater](https://argocd-image-updater.readthedocs.io/) at
+`ghcr.io/andyvalerio/showgrab` with the `semver` update strategy and new
+releases roll out on their own — no redeploy step required.
 
 ## How it decides
 
 For each episode it sees in the feed:
 
 1. **Already in the library?** → skip, silently.
-2. **Aired longer ago than the cutoff (default 180 days)?** → skip, note it in
+2. **Aired longer ago than the cutoff (default 180 days)?** → skip, noted in
    the digest email (catches old reposts).
 3. **No air date found at all?** → flag for attention, don't download.
 4. Otherwise **wait** until either the preferred quality is offered or a wait
    window elapses (default 6 h), then **grab** the release closest to your
    preferred quality (ties break toward the smaller file).
-5. For a while after grabbing (default 7 days), if a **better-matching** release
-   or a **REPACK** appears, **swap** to it (delete the old torrent + files via
-   qBittorrent, add the new one).
+5. For a while after grabbing (default 7 days), if a **better-matching**
+   release or a **REPACK** appears, **swap** to it (delete the old torrent +
+   files via qBittorrent, add the new one).
 
-Every threshold is configuration.
+## Configuration reference
+
+All configuration is `SHOWGRAB_*` environment variables, seeded into SQLite
+once on first start. After that, edits made in the Settings page always win
+over the environment.
+
+| Variable | Default | Notes |
+|---|---|---|
+| `SHOWGRAB_DB_PATH` | `/config/showgrab.db` | Set by the Docker image; rarely needs changing. |
+| `SHOWGRAB_PORT` | `8989` | Web UI / `/healthz` port. |
+| `SHOWGRAB_FEED_URL` | *(required)* | Your showRSS feed URL. |
+| `SHOWGRAB_DRY_RUN` | `true` | Plan and email, but never grab or persist. |
+| `SHOWGRAB_POLL_INTERVAL_MINUTES` | `120` | How often the feed is polled. |
+| `SHOWGRAB_PREFERRED_QUALITY` | `720p` | The quality showgrab converges toward. |
+| `SHOWGRAB_WAIT_HOURS` | `6` | How long to hold out for the preferred quality before grabbing the closest available. |
+| `SHOWGRAB_SWAP_WINDOW_DAYS` | `7` | How long after a grab a better release/REPACK can still trigger a swap. |
+| `SHOWGRAB_OLD_CUTOFF_DAYS` | `180` | Episodes that aired longer ago than this are skipped, not grabbed. |
+| `SHOWGRAB_QBITTORRENT_URL` | *(required)* | qBittorrent WebUI base URL. |
+| `SHOWGRAB_QBITTORRENT_USERNAME` | *(required)* | |
+| `SHOWGRAB_QBITTORRENT_PASSWORD` | *(required)* | |
+| `SHOWGRAB_QBITTORRENT_CATEGORY` | `showgrab` | Category assigned to torrents showgrab adds. |
+| `SHOWGRAB_JELLYFIN_URL` | *(required)* | Jellyfin base URL, used for the already-have check. |
+| `SHOWGRAB_JELLYFIN_API_KEY` | *(required)* | |
+| `SHOWGRAB_SMTP_HOST` | *(optional)* | Leave unset to disable digest emails entirely. |
+| `SHOWGRAB_SMTP_PORT` | `587` | |
+| `SHOWGRAB_SMTP_USERNAME` | *(optional)* | |
+| `SHOWGRAB_SMTP_PASSWORD` | *(optional)* | |
+| `SHOWGRAB_SMTP_FROM` | *(optional)* | |
+| `SHOWGRAB_SMTP_TO` | *(optional)* | Comma-separated list of recipients. |
+| `SHOWGRAB_SMTP_USE_TLS` | `true` | STARTTLS. |
+| `SHOWGRAB_SMTP_USE_SSL` | `false` | Implicit TLS (port 465-style); mutually exclusive with STARTTLS. |
+| `SHOWGRAB_TV_ROOT` | `/downloads/tv_series` | Where new series folders are created, dot-separated (`Doctor.Who`). |
+| `SHOWGRAB_PATH_MAPPINGS` | `[]` | JSON list of `[from, to]` pairs mapping Jellyfin library paths to showgrab's own filesystem view, e.g. `[["/media1", "/downloads/tv_series"]]`. |
+
+Timestamps in the web UI render in your browser's local timezone
+automatically — there's no timezone setting.
+
+## The web UI
+
+- **Dashboard** (`/`) — every tracked episode with its status and variants;
+  per-episode actions where they apply: **Grab now**, **Retry**
+  (needs-attention → discovered), **Swap to** a specific known variant, and
+  **Ignore** (permanent, silences future notifications for that episode).
+  Stays empty while dry-run is on — see `/activity` and the digest email
+  instead.
+- **Settings** (`/settings`) — every value above, plus a test-connection
+  button per adapter (qBittorrent, Jellyfin, SMTP) that checks the values
+  currently in the form, not just what's saved.
+- **Activity** (`/activity`) — every poll's result, most recent first, with
+  the full digest expandable per row.
 
 ## Develop
 
@@ -58,7 +161,7 @@ and `scripts/live_dry_run_test.py` (one full dry-run poll cycle against the
 real feed + Jellyfin — the exact safety mechanism the production rollout
 depends on, provable end-to-end with zero side effects).
 
-## Layout
+## Architecture
 
 ```
 src/showgrab/
@@ -86,8 +189,6 @@ tests/                 unit tests — adapters against httpx.MockTransport / fak
                         web routes driven through FastAPI's TestClient
 ```
 
-## Adapters
-
 Each adapter takes its config/credentials via constructor args — nothing is
 read from the environment or hardcoded, so the same code works for any
 deployment (the `service/` layer is what wires env/DB-sourced config in):
@@ -100,51 +201,18 @@ deployment (the `service/` layer is what wires env/DB-sourced config in):
 - `adapters.notify.SmtpNotifier(SmtpConfig(...))` — any SMTP account (STARTTLS
   or implicit TLS)
 
-Every adapter has a `test_connection()` method for a later settings-page
-"test connection" button.
+`showgrab-serve` polls on a schedule (rescheduled at runtime when settings
+change), runs the engine, and either:
 
-## The service (phase 3)
-
-`showgrab-serve` polls on a schedule (`SHOWGRAB_POLL_INTERVAL_MINUTES`,
-rescheduled at runtime when settings change), runs the engine, and either:
-
-- **dry-run** (`SHOWGRAB_DRY_RUN=true`, the safe default): runs the full
-  engine against the real feed and real Jellyfin/TVmaze, emails what it
-  *would* do, but never calls qBittorrent and never persists anything — the
-  next poll re-derives the identical decision from scratch. This is the
-  mechanism a production rollout uses to verify behavior against the real
-  feed before going live.
+- **dry-run**: runs the full engine against the real feed and real
+  Jellyfin/TVmaze, emails what it *would* do, but never calls qBittorrent and
+  never persists anything — the next poll re-derives the identical decision
+  from scratch.
 - **live**: executes grabs/swaps against qBittorrent, and persists the
   ledger only if every action in that poll succeeded — a partial failure
-  persists nothing and retries cleanly next poll (safe because both
-  planning and the qBittorrent add/delete calls are idempotent).
-
-Settings live in SQLite, seeded once from `SHOWGRAB_*` env vars on first
-start; edits after that always win over env. See
-`store/settings_store.py` for the full list of variables.
-
-## The web UI (phase 4)
-
-`showgrab-serve` also serves a small dashboard at `/` — deliberately minimal,
-plain HTML forms first (works with zero JavaScript), HTMX layered on only
-where a partial swap earns its keep (the settings page's test-connection
-buttons):
-
-- **Dashboard** (`/`) — every tracked episode with its status and variants;
-  per-episode actions where they apply: **Grab now** (discovered/waiting,
-  picks the same best-scoring variant the automatic grab would), **Retry**
-  (needs-attention → discovered), **Swap to** a specific known variant, and
-  **Ignore** (permanent, silences future notifications for that episode).
-  Note: while dry-run is on, this stays empty by design — dry-run never
-  writes to the ledger — see `/activity` and the digest email instead.
-- **Settings** (`/settings`) — every value in `SettingsStore`, plus a
-  test-connection button per adapter (qBittorrent, Jellyfin, SMTP) that
-  checks the values currently in the form, not just what's saved.
-- **Activity** (`/activity`) — every poll's result, most recent first.
-
-All actions are read/write against the exact same stores the poll loop
-uses — no shadow state, no separate code path.
+  persists nothing and retries cleanly next poll (safe because both planning
+  and the qBittorrent add/delete calls are idempotent).
 
 ## License
 
-TBD before the repo is made public.
+[MIT](LICENSE)
