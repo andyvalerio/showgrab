@@ -81,6 +81,9 @@ def test_skipped_old_notifies_once():
     assert entry.status is Status.SKIPPED_OLD
     assert [e.kind for e in r1.events] == ["skipped-old"]
     assert r1.actions == []
+    # The episode identifier must be in the message — a digest/activity-log
+    # line naming only the show, not which episode, isn't actionable.
+    assert r1.events[0].detail.startswith("S03E02 ")
     # Re-plan: no second notification (REQ-SG-009 + REQ-SG-014).
     r2 = engine.plan(ledger, r, NOW, cfg, checks(airdate=OLD))
     assert r2.events == []
@@ -95,6 +98,7 @@ def test_no_airdate_is_needs_attention_and_not_downloaded():
     assert entry.status is Status.NEEDS_ATTENTION
     assert [e.kind for e in result.events] == ["needs-attention"]
     assert result.actions == []  # REQ-SG-010
+    assert result.events[0].detail.startswith("S03E02:")
 
 
 # --- wait / grab ---------------------------------------------------------
@@ -148,6 +152,7 @@ def test_needs_attention_when_no_usable_quality_after_wait():
     result = engine.plan(ledger, r, NOW + timedelta(hours=7), cfg, checks())
     assert ledger.all()[0].status is Status.NEEDS_ATTENTION
     assert [e.kind for e in result.events] == ["needs-attention"]
+    assert result.events[0].detail.startswith("S01E01:")
 
 
 # --- swap ----------------------------------------------------------------

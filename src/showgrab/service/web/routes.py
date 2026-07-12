@@ -198,7 +198,7 @@ def _settings_from_form(form) -> Settings:
 
     return Settings(
         feed_url=s("feed_url"),
-        poll_interval_minutes=f("poll_interval_minutes", 30.0),
+        poll_interval_minutes=f("poll_interval_minutes", 120.0),
         dry_run=form.get("dry_run") == "on",
         preferred_quality=s("preferred_quality", "720p"),
         wait_hours=f("wait_hours", 6.0),

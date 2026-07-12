@@ -45,7 +45,7 @@ def test_defaults_when_env_unset(tmp_path, monkeypatch):
 
     assert settings.dry_run is True  # safe default: never grab silently
     assert settings.preferred_quality == "720p"
-    assert settings.poll_interval_minutes == 30.0
+    assert settings.poll_interval_minutes == 120.0
     assert settings.qbittorrent_category == "showgrab"
     assert settings.path_mappings == []
 

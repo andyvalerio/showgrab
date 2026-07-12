@@ -146,11 +146,11 @@ def _run_gates(entry: LedgerEntry, now: datetime, config: Config, checks: Checks
         return []  # same as above (REQ-SG-023)
     if airdate is None:
         entry.status = Status.NEEDS_ATTENTION
-        return _notify_once(entry, detail="no metadata match for air date")
+        return _notify_once(entry, detail=f"{_ep(entry)}: no metadata match for air date")
 
     if airdate < now - timedelta(days=config.old_cutoff_days):
         entry.status = Status.SKIPPED_OLD
-        return _notify_once(entry, detail=f"aired {airdate.date()} (older than cutoff)")
+        return _notify_once(entry, detail=f"{_ep(entry)} aired {airdate.date()} (older than cutoff)")
 
     entry.status = Status.WAITING
     return []
@@ -163,7 +163,7 @@ def _try_grab(entry: LedgerEntry, now: datetime, config: Config) -> tuple[list, 
         # grab, flag it rather than waiting forever (REQ-SG-011 boundary).
         if now - entry.first_seen >= timedelta(hours=config.wait_hours):
             entry.status = Status.NEEDS_ATTENTION
-            return [], _notify_once(entry, detail="no usable-quality release appeared")
+            return [], _notify_once(entry, detail=f"{_ep(entry)}: no usable-quality release appeared")
         return [], []
 
     preferred_offered = any(

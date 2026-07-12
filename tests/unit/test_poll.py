@@ -161,6 +161,33 @@ def test_live_poll_persists_and_notifies_on_success():
     assert records[0].dry_run is False
 
 
+def test_live_poll_with_nothing_to_report_sends_no_email():
+    # A quiet poll (empty feed, nothing new) must not email at all — "live
+    # mode always sends" only ever means "when there IS a digest", not
+    # unconditionally every poll (REQ-SG-042).
+    ledger_store, activity_log = make_stores()
+    notifier = FakeNotifier()
+    settings = make_settings(dry_run=False)
+
+    outcome = run_poll(
+        settings=settings,
+        ledger_store=ledger_store,
+        activity_log=activity_log,
+        fetch_releases=fetch_releases_factory([]),
+        checks=make_checks(),
+        downloader=FakeDownloader(),
+        jellyfin=FakeJellyfinPaths(),
+        notifier=notifier,
+        now=NOW,
+    )
+
+    assert outcome.grabbed == 0
+    assert notifier.calls == []  # nothing to report -> nothing sent
+    record = activity_log.recent()[0]
+    assert record.details["emailed"] is False
+    assert record.details["digest_body"] is None
+
+
 # --- dry run -----------------------------------------------------------
 
 
@@ -303,7 +330,7 @@ def test_dry_run_reemails_when_digest_content_changes():
     assert records[1].details["emailed"] is True
 
 
-def test_live_mode_always_emails_even_with_identical_repeated_content():
+def test_live_mode_does_not_suppress_a_repeating_failure_digest():
     # REQ-SG-042: unlike dry-run, live mode must NOT dedupe — a persistent
     # real failure (identical error message poll after poll) must keep
     # alerting, never go silent. grabbed/swapped digests don't hit this path

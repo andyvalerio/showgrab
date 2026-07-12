@@ -69,7 +69,7 @@ def _seed_row_from_env() -> SettingsRow:
     return SettingsRow(
         id=_SETTINGS_ROW_ID,
         feed_url=_env("SHOWGRAB_FEED_URL", ""),
-        poll_interval_minutes=float(_env("SHOWGRAB_POLL_INTERVAL_MINUTES", "30")),
+        poll_interval_minutes=float(_env("SHOWGRAB_POLL_INTERVAL_MINUTES", "120")),
         dry_run=_env_bool("SHOWGRAB_DRY_RUN", "true"),
         preferred_quality=_env("SHOWGRAB_PREFERRED_QUALITY", "720p"),
         wait_hours=float(_env("SHOWGRAB_WAIT_HOURS", "6")),

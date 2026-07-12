@@ -152,17 +152,23 @@ def _run_poll_inner(
 
 
 def _should_send_digest(dry_run: bool, current_body: str | None, previous_body: str | None) -> bool:
-    """Live mode always sends when there's a digest — grabbed/swapped events
-    already naturally dedupe poll-to-poll via ledger persistence
-    (REQ-SG-014/027), and an execution-error digest repeating identically
-    across polls means a real, ongoing failure that should keep alerting,
-    never go silent.
+    """Only called when there IS a digest to consider (build_digest already
+    returned None, and nothing gets sent, for a poll with zero events — that
+    gate is identical in both modes and happens before this function is even
+    reached). This function decides whether that non-empty digest should be
+    suppressed as a duplicate.
+
+    Live mode never suppresses: grabbed/swapped events already can't repeat
+    poll-to-poll (ledger persistence means a settled episode stops producing
+    events at all, not that it repeats one), so this rule only ever bites on
+    an execution-error digest repeating identically — a real, ongoing
+    failure that must keep alerting, never go silent.
 
     Dry-run mode never persists (REQ-SG-026 — that's what makes it safe to
-    run before going live), so without this check the exact same decision
-    would be re-derived, and re-emailed, every single poll forever. Skip
-    sending when nothing has changed since the last poll; the activity log
-    still records every poll regardless (REQ-SG-041)."""
+    run before going live), so the exact same non-empty digest would
+    otherwise be re-derived, and re-sent, every single poll forever. Skip
+    sending when it's unchanged since the immediately preceding poll; the
+    activity log still records every poll regardless (REQ-SG-041)."""
     if not dry_run:
         return True
     return current_body != previous_body

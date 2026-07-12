@@ -34,7 +34,7 @@
         {% endfor %}
       </td>
       <td>{% if entry.chosen %}{{ entry.chosen.quality.label }}{% else %}<span class="muted">—</span>{% endif %}</td>
-      <td class="muted">{{ entry.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+      <td class="muted"><time datetime="{{ entry.first_seen.isoformat() }}">{{ entry.first_seen.strftime("%Y-%m-%d %H:%M") }} UTC</time></td>
       <td>
         <div class="actions">
           {% if entry.status.value in ("discovered", "waiting") and entry.variants %}

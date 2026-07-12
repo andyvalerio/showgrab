@@ -19,7 +19,7 @@
   <tbody>
     {% for r in records %}
     <tr>
-      <td class="muted">{{ r.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      <td class="muted"><time datetime="{{ r.timestamp.isoformat() }}">{{ r.timestamp.strftime("%Y-%m-%d %H:%M:%S") }} UTC</time></td>
       <td>{% if r.dry_run %}<span class="status status-waiting">dry-run</span>{% else %}<span class="status status-grabbed">live</span>{% endif %}</td>
       <td>{% if r.ok %}<span class="test-ok">ok</span>{% else %}<span class="test-fail">failed</span>{% endif %}</td>
       <td>{{ r.summary }}</td>

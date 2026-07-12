@@ -23,7 +23,7 @@ class SettingsRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
     feed_url: Mapped[str] = mapped_column(String, default="")
-    poll_interval_minutes: Mapped[float] = mapped_column(Float, default=30.0)
+    poll_interval_minutes: Mapped[float] = mapped_column(Float, default=120.0)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=True)
 
     preferred_quality: Mapped[str] = mapped_column(String, default="720p")

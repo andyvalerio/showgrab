@@ -359,3 +359,19 @@ def test_static_htmx_is_served(monkeypatch):
         resp = client.get("/static/htmx.min.js")
         assert resp.status_code == 200
         assert b"htmx" in resp.content.lower()
+
+
+def test_timestamps_render_as_time_elements_for_client_side_localtime(monkeypatch):
+    # No server-side timezone setting — the browser converts UTC to its own
+    # local time via static/localtime.js. Server-rendered HTML must expose a
+    # machine-readable UTC datetime attribute for that script to find.
+    app, settings_store, ledger_store, activity_log = make_app(monkeypatch)
+    activity_log.record(NOW, dry_run=False, ok=True, summary="1 grabbed")
+
+    with TestClient(app) as client:
+        resp = client.get("/activity")
+        assert '<time datetime="2026-07-10T12:00:00+00:00">' in resp.text
+
+        static_resp = client.get("/static/localtime.js")
+        assert static_resp.status_code == 200
+        assert b"toLocaleString" in static_resp.content
