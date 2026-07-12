@@ -126,13 +126,24 @@ def _run_gates(entry: LedgerEntry, now: datetime, config: Config, checks: Checks
         entry.status = Status.NEEDS_ATTENTION
         return _notify_once(entry)
 
-    if checks.library.has_episode(
-        entry.show_id, entry.external_id, entry.show_name, season, episode
-    ):
+    try:
+        have = checks.library.has_episode(
+            entry.show_id, entry.external_id, entry.show_name, season, episode
+        )
+    except Exception:
+        # Transient adapter failure (network blip, Jellyfin restarting, ...).
+        # Leave the entry DISCOVERED so the next poll retries the gates from
+        # scratch, rather than misclassifying it or crashing the whole plan()
+        # over one flaky check (REQ-SG-023).
+        return []
+    if have:
         entry.status = Status.SKIPPED_HAVE
         return []  # silent by design
 
-    airdate = checks.metadata.airdate(entry.external_id, entry.show_name, season, episode)
+    try:
+        airdate = checks.metadata.airdate(entry.external_id, entry.show_name, season, episode)
+    except Exception:
+        return []  # same as above (REQ-SG-023)
     if airdate is None:
         entry.status = Status.NEEDS_ATTENTION
         return _notify_once(entry, detail="no metadata match for air date")

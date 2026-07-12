@@ -3,12 +3,15 @@ name = "showgrab"
 version = "0.1.0"
 description = "Watch a showRSS feed and download new TV episodes through qBittorrent at a preferred quality, converging (up or down) as releases appear."
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "httpx>=0.27",
+]
 
 [project.optional-dependencies]
-# Phase 1 is headless and dependency-free on purpose (stdlib only), so the core
-# engine stays trivially testable and portable. Adapters/UI add deps in later
-# phases (httpx, fastapi, sqlalchemy, apscheduler, ...).
+# core/ stays stdlib-only by convention (no import of httpx etc. outside
+# adapters/), so the decision engine remains trivially testable and portable.
+# UI/scheduler/persistence deps (fastapi, sqlalchemy, apscheduler, ...) arrive
+# in later phases.
 dev = [
     "pytest>=8",
 ]

@@ -10,9 +10,11 @@ It also refuses to re-download old episodes that get republished to the feed,
 checking the media library (Jellyfin) and the episode's air date (TVmaze)
 before grabbing, and emails a digest when something needs a human.
 
-> **Status: early development.** Phase 1 (the headless decision engine) is
-> implemented and tested. Adapters, scheduler, web UI, and packaging are on the
-> roadmap — see `docs/` and the architecture doc.
+> **Status: early development.** Phase 1 (the headless decision engine) and
+> phase 2 (real adapters: qBittorrent, Jellyfin, TVmaze, SMTP) are implemented
+> and tested. The scheduler loop, web UI, and packaging are next — see `docs/`
+> and the architecture doc. Adapters aren't wired into the CLI yet (still
+> dry-run only, stubbed checks) — that wiring is phase 3.
 
 ## How it decides
 
@@ -45,13 +47,33 @@ PYTHONPATH=src .venv/bin/python -m showgrab.cli tests/fixtures/feed_sample.xml -
 
 ```
 src/showgrab/
-  core/        decision engine — pure logic, no I/O (quality, release, engine, ledger, models)
-  adapters/    edges that touch the outside world (feed parser; qB/Jellyfin/TVmaze/SMTP to come)
+  core/        decision engine — pure logic, no I/O (quality, release, engine, ledger,
+               models, downloader protocol, digest formatting)
+  adapters/    edges that touch the outside world — feed parser, qBittorrent
+               (Downloader), Jellyfin (LibraryChecker), TVmaze (MetadataResolver),
+               SMTP digest notifier. Never hardcode credentials — always config-in.
   store/       persistence (SQLite — to come)
-  cli.py       dry-run entry point
+  cli.py       dry-run entry point (stubbed checks; adapters not wired in yet)
 docs/requirements.md   REQ-SG-* catalog; every test header cites the IDs it verifies
-tests/                 unit tests (integration + e2e layers to come)
+tests/                 unit tests, adapters tested against httpx.MockTransport /
+                        fake SMTP doubles (integration-against-real-service + e2e layers
+                        to come in later phases)
 ```
+
+## Adapters (phase 2)
+
+Each adapter takes its config/credentials via constructor args — nothing is
+read from the environment or hardcoded, so the same code works for any
+deployment:
+
+- `adapters.qbittorrent.QbittorrentDownloader(base_url, username, password)`
+- `adapters.jellyfin.JellyfinLibrary(base_url, api_key)`
+- `adapters.tvmaze.TvMazeMetadata()` — free, keyless
+- `adapters.notify.SmtpNotifier(SmtpConfig(...))` — any SMTP account (STARTTLS
+  or implicit TLS)
+
+Every adapter has a `test_connection()` method for a later settings-page
+"test connection" button.
 
 ## License
 

@@ -5,7 +5,9 @@
 #   REQ-SG-011 (wait for preferred quality or wait_hours, then grab best),
 #   REQ-SG-012 (swap to a strictly better variant within swap_window, then settle),
 #   REQ-SG-013 (a REPACK of the chosen tier triggers a replace within the window),
-#   REQ-SG-014 (idempotent: re-planning the same feed produces no dup actions/events).
+#   REQ-SG-014 (idempotent: re-planning the same feed produces no dup actions/events),
+#   REQ-SG-023 (a check that raises leaves the episode discovered for retry on
+#     the next poll, with no false notification or misclassification).
 # Scenario: drive one episode through each path with a fake library/metadata and
 #   an explicit clock, asserting statuses, actions, and event counts.
 
@@ -240,3 +242,58 @@ def test_item_without_episode_marker_is_needs_attention_once():
     assert [e.kind for e in r1.events] == ["needs-attention"]
     r2 = engine.plan(ledger, r, NOW, cfg, checks())
     assert r2.events == []
+
+
+# --- gate resilience (REQ-SG-023) -----------------------------------------
+
+
+class _FlakyOnce:
+    """Raises once (simulating a transient adapter failure), then delegates
+    to a real check on every subsequent call."""
+
+    def __init__(self, real, raise_on):
+        self._real = real
+        self._raise_on = raise_on
+        self._raised = False
+
+    def has_episode(self, *a, **k):
+        if self._raise_on == "library" and not self._raised:
+            self._raised = True
+            raise RuntimeError("transient network error")
+        return self._real.has_episode(*a, **k)
+
+    def airdate(self, *a, **k):
+        if self._raise_on == "metadata" and not self._raised:
+            self._raised = True
+            raise RuntimeError("transient network error")
+        return self._real.airdate(*a, **k)
+
+
+def test_transient_library_check_failure_stays_discovered_and_retries():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720)
+    r = [rel("Show S01E01 720p", show_id="1", infohash="a")]
+
+    flaky_checks = engine.Checks(_FlakyOnce(_Lib(have=False), "library"), _Meta())
+    r1 = engine.plan(ledger, r, NOW, cfg, flaky_checks)
+    entry = ledger.all()[0]
+    assert entry.status is Status.DISCOVERED  # not misclassified
+    assert r1.actions == []
+    assert r1.events == []  # no false notification
+
+    r2 = engine.plan(ledger, r, NOW, cfg, flaky_checks)  # adapter recovers
+    assert ledger.all()[0].status is Status.GRABBED
+
+
+def test_transient_metadata_check_failure_stays_discovered_and_retries():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720)
+    r = [rel("Show S01E01 720p", show_id="1", infohash="a")]
+
+    flaky_checks = engine.Checks(_Lib(have=False), _FlakyOnce(_Meta(), "metadata"))
+    r1 = engine.plan(ledger, r, NOW, cfg, flaky_checks)
+    assert ledger.all()[0].status is Status.DISCOVERED
+    assert r1.events == []
+
+    r2 = engine.plan(ledger, r, NOW, cfg, flaky_checks)
+    assert ledger.all()[0].status is Status.GRABBED

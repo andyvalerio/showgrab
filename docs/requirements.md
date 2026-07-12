@@ -68,3 +68,65 @@ release ranks a half-step **above** its plain resolution.
 
 - **REQ-SG-015** — MUST provide a `--dry-run` CLI that parses a feed (URL or
   file) and prints the decision for each episode without performing downloads.
+
+## Phase 2 — adapters
+
+Credentials (qBittorrent user/pass, Jellyfin API key, SMTP user/pass) are
+always supplied by the caller via config objects/env — no adapter ever
+hardcodes or guesses a secret.
+
+### qBittorrent (Downloader)
+
+- **REQ-SG-016** — MUST authenticate against the qBittorrent WebUI API
+  (cookie-based session) and add a magnet with an explicit save path (and
+  optional category), with `autoTMM` disabled so the save path is honored.
+- **REQ-SG-017** — MUST delete a torrent **with its downloaded files** given
+  an infohash (the only deletion mode this adapter exposes — showgrab never
+  deletes torrents without files, since a stale torrent-only delete would
+  leave an orphaned file the swap logic doesn't know about).
+- **REQ-SG-018** — On a session expiry (401/403 on an authenticated request)
+  MUST re-authenticate and retry the request **exactly once**; a second
+  failure MUST raise, never loop.
+
+### Jellyfin (MediaServer / LibraryChecker)
+
+- **REQ-SG-019** — `has_episode` MUST match the series by name (matching
+  case/whitespace-insensitively and ignoring a trailing `(YYYY)` disambiguator
+  on either side, since showRSS and Jellyfin don't always agree on including
+  it) and MUST count an episode as present only when Jellyfin reports it as an
+  actual file (`LocationType: FileSystem`), not a virtual/placeholder entry
+  for an unaired or missing episode.
+- Transport/API failures MUST raise a typed error (`JellyfinError`), never
+  silently return `False` — see REQ-SG-023, which governs how the engine
+  treats that raise.
+
+### TVmaze (MetadataResolver)
+
+- **REQ-SG-020** — `airdate` MUST return `None` without making a network call
+  when `external_id` is absent, MUST return `None` on a 404 (episode not in
+  TVmaze's catalog for that show/season/number), and MUST raise a typed error
+  (`TvMazeError`) on any other transport/HTTP failure — never silently return
+  `None` for a transient failure (that would permanently misclassify the
+  episode; see REQ-SG-023).
+
+### Notifications (digest email)
+
+- **REQ-SG-021** — Building a digest from a list of notify events MUST group
+  them by kind (grabbed / swapped / skipped-old / needs-attention) and MUST
+  produce no digest (no email sent) when the event list is empty.
+- **REQ-SG-022** — The SMTP notifier MUST support both STARTTLS (explicit TLS
+  on a plaintext-then-upgrade port, e.g. Gmail's 587) and implicit TLS/SSL
+  (e.g. port 465), selected by config — not hardcoded to one provider's setup,
+  since this is meant to work for any SMTP account after open-sourcing.
+
+### Gate resilience
+
+Real adapters are fallible (network blips, a restarting Jellyfin pod); the
+engine's first-sight gates must not let that turn into silent data loss.
+
+- **REQ-SG-023** — If the library check or the metadata check raises during
+  the first-sight gates, the episode MUST remain (or return to) `discovered`,
+  MUST NOT emit a notify event, and MUST NOT be misclassified as
+  skipped/needs-attention; the same episode is re-evaluated on the next poll
+  (bounded retry via the natural poll cadence, no in-process retry loop, no
+  swallowing a transient failure into a wrong permanent state).
