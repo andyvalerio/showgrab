@@ -160,12 +160,18 @@ that talks to real services. Run against the actual deployment target
   legal public-domain torrent) was separately found to get a hard `409` from
   this server for reasons unrelated to showgrab (likely a blocklist/tracker
   interaction) — noted in the script, not investigated further.
-- SMTP: not yet live-tested (no credentials supplied at the time of this
-  pass) — `test_connection()`/`send_digest()` remain verified against fakes
-  only until run live.
+- SMTP: live-tested against Gmail (`andy@valerio.nu`, app password,
+  `smtp.gmail.com:587`, STARTTLS) — `test_connection()` and a real
+  `send_digest()` both passed on the first attempt, delivering an actual
+  digest email. No contract surprises this time (unlike qBittorrent above).
 
 Takeaway worth keeping in mind for every future adapter: **mocks encode
 assumptions, and assumptions about a real API's exact status codes/response
 bodies are exactly the kind of thing that's wrong until proven otherwise.**
 Live-test before trusting, the same way this pass caught a real bug in
 minutes that could otherwise have silently broken grabs in production.
+
+**All four phase-2 adapters are now live-verified** (qBittorrent, Jellyfin,
+TVmaze, SMTP/Gmail). No real credentials are stored anywhere in this repo —
+they were passed as environment variables for a single manual run of
+`scripts/live_smoke_test.py` and are not persisted.
