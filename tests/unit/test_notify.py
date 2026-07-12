@@ -102,3 +102,10 @@ def test_connection_ok():
     fake = FakeSmtp()
     notifier = make_notifier(fake)
     assert notifier.test_connection() is True
+
+
+def test_dry_run_flag_reaches_the_subject_line():
+    fake = FakeSmtp()
+    notifier = make_notifier(fake)
+    notifier.send_digest([NotifyEvent("grabbed", ("1", 1, 1), "Silo", "x")], dry_run=True)
+    assert fake.sent[0]["Subject"].startswith("[DRY RUN]")

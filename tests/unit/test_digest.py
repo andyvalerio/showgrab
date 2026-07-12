@@ -1,5 +1,6 @@
 # Verifies: REQ-SG-021 (digest groups notify events by kind and counts them;
-#   an empty event list produces no digest at all).
+#   an empty event list produces no digest at all), REQ-SG-026 (dry-run
+#   digests are unambiguously marked in both subject and body).
 # Scenario: build_digest over a mixed set of events and over the empty list.
 
 from showgrab.core.digest import build_digest
@@ -28,3 +29,17 @@ def test_singular_event_count_in_subject():
     events = [NotifyEvent("grabbed", ("1", 1, 1), "Silo", "S01E01 720p")]
     subject, _ = build_digest(events)
     assert "1 event" in subject and "1 events" not in subject
+
+
+def test_dry_run_marks_subject_and_body():
+    events = [NotifyEvent("grabbed", ("1", 1, 1), "Silo", "S01E01 720p")]
+    subject, body = build_digest(events, dry_run=True)
+    assert subject.startswith("[DRY RUN]")
+    assert "DRY RUN" in body
+
+
+def test_non_dry_run_has_no_dry_run_marker():
+    events = [NotifyEvent("grabbed", ("1", 1, 1), "Silo", "S01E01 720p")]
+    subject, body = build_digest(events, dry_run=False)
+    assert "DRY RUN" not in subject
+    assert "DRY RUN" not in body

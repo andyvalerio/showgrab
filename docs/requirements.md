@@ -137,6 +137,93 @@ engine's first-sight gates must not let that turn into silent data loss.
   (bounded retry via the natural poll cadence, no in-process retry loop, no
   swallowing a transient failure into a wrong permanent state).
 
+## Phase 3 — service-ification
+
+Turns the headless engine + adapters into a runnable, persistent service: a
+scheduler that polls on a cadence, settings and the ledger surviving process
+restarts, real execution against qBittorrent, and a health endpoint.
+
+### Persistence
+
+- **REQ-SG-024** — Settings MUST persist in SQLite and seed once from
+  environment variables into an empty settings table; on every subsequent
+  start the DB values MUST win (env is a first-run seed, never an override
+  of a user's saved edits).
+- **REQ-SG-025** — The ledger MUST persist across process restarts
+  (SQLite-backed) preserving every field the engine depends on (status, all
+  variants, chosen infohash, `notified`, timestamps), with no change to the
+  idempotency guarantees already proven for the in-memory ledger
+  (REQ-SG-014): loading, planning, and saving back must round-trip losslessly.
+
+### Save-path resolution
+
+- **REQ-SG-028** — Resolving where a grab is saved MUST prefer the media
+  server's existing **whole-series** folder for that series (via Jellyfin),
+  translated through user-configured path mappings; when no such folder
+  exists yet, MUST fall back to a sanitized folder name under a configured
+  TV root. Path mappings and the TV root are settings, not hardcoded — this
+  must work for any installation's mount layout, not just this deployment's.
+  New folder names MUST follow this library's existing dot-separated
+  convention (e.g. "American Dad!" -> `American.Dad`, "Doctor Who" ->
+  `Doctor.Who`) — punctuation stripped, words joined by dots.
+  - **Live finding (2026-07-12):** a real, messy library was found where a
+    flat one-file-per-folder TV layout makes Jellyfin register individual
+    episode release folders as their own bogus `Series` entries alongside
+    (or instead of) the genuine series folder — "American Dad!" had six
+    same-named `Series` entries, five really a single mis-parsed
+    episode-release folder and only one the real series directory; "Doctor
+    Who" had *only* mis-parsed release folders, no genuine series folder at
+    all. Episode-count-based disambiguation does not work here: Jellyfin
+    groups `/Shows/{id}/Episodes` by the show's underlying metadata
+    identity, not by the specific folder item, so every duplicate — junk or
+    genuine — reports the identical full episode list.
+  - **Rule (Andy's correction, 2026-07-12):** judge purely by the
+    **candidate folder's name**, never by querying its contents. A folder
+    name carrying a release's own markers (an `SxxEyy` code, a resolution
+    like `1080p`, an encode tag like `x265`/`HEVC`/`WEB-DL`) is a
+    mis-registered single episode and MUST NEVER be picked as the series
+    folder, regardless of how many other candidates exist. If no candidate
+    survives this filter, the series is treated as not-yet-in-the-library
+    (return `None`) — a fresh folder is created, never a release folder
+    reused.
+
+### Dry-run mode (the safety net replacing a dev environment)
+
+There is no dev cluster to rehearse against (see the home-server architecture
+doc) — the first production rollout instead runs with dry-run mode on, and
+these requirements are what make that safe.
+
+- **REQ-SG-026** — In dry-run mode, a poll MUST run the full engine (feed
+  fetch, gates, planning) and MUST send a digest of what it *would* do
+  (clearly marked as dry-run in the subject), but MUST NOT call the
+  downloader and MUST NOT persist any ledger mutation — the next poll must
+  see the exact same starting state and re-derive the same decisions, so
+  turning dry-run off never skips or double-processes anything.
+- **REQ-SG-027** — In live mode, a poll's ledger mutations MUST be persisted
+  only if every action in that poll executed without error; on any execution
+  error, nothing from that poll is persisted, an error notify event is sent,
+  and the next poll retries from the last-known-good state. This relies on
+  the already-proven idempotency of both planning (REQ-SG-014) and the
+  qBittorrent adapter's add/delete calls (safe to repeat) — a known tradeoff
+  of this all-or-nothing scheme is that one failing action in a large poll
+  causes redundant (but harmless) re-execution of that poll's other,
+  already-succeeded actions next cycle.
+
+### Scheduler and health
+
+- **REQ-SG-029** — The service MUST expose `GET /healthz` returning 200 for
+  basic liveness without depending on any external service being reachable.
+- **REQ-SG-030** — Shutdown MUST stop the scheduler cleanly (no orphaned
+  timers/threads) without corrupting in-progress state.
+- **REQ-SG-031** — Poll cadence MUST be a setting, reschedulable at runtime
+  without a process restart.
+- **REQ-SG-032** — An unhandled exception anywhere in a poll (a feed fetch
+  timeout, an adapter bug, anything not already caught by REQ-SG-023/027)
+  MUST NOT crash the scheduler or kill future polls; it is recorded to the
+  activity log as a failed poll, a best-effort notification is attempted,
+  and the process continues to the next scheduled poll. This generalizes the
+  gate-level resilience principle (REQ-SG-023) to the whole poll cycle.
+
 ### Live verification (2026-07-12)
 
 The mocked unit tests above prove the code does what *we assumed* the real

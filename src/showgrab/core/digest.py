@@ -18,8 +18,11 @@ _TITLES = {
 _ORDER = ["grabbed", "swapped", "skipped-old", "needs-attention"]
 
 
-def build_digest(events: list[NotifyEvent]) -> tuple[str, str] | None:
-    """Returns (subject, body), or None when there is nothing to report."""
+def build_digest(events: list[NotifyEvent], *, dry_run: bool = False) -> tuple[str, str] | None:
+    """Returns (subject, body), or None when there is nothing to report.
+
+    dry_run marks the subject unambiguously (REQ-SG-026) so a review-window
+    digest can never be mistaken for one describing real downloads."""
     if not events:
         return None
 
@@ -28,6 +31,9 @@ def build_digest(events: list[NotifyEvent]) -> tuple[str, str] | None:
         by_kind.setdefault(e.kind, []).append(e)
 
     lines: list[str] = []
+    if dry_run:
+        lines.append("DRY RUN — nothing below was actually downloaded or deleted.")
+        lines.append("")
     seen_kinds = list(_ORDER) + [k for k in by_kind if k not in _ORDER]
     for kind in seen_kinds:
         group = by_kind.get(kind)
@@ -39,6 +45,7 @@ def build_digest(events: list[NotifyEvent]) -> tuple[str, str] | None:
         lines.append("")
 
     count = len(events)
-    subject = f"showgrab digest — {count} event{'s' if count != 1 else ''}"
+    prefix = "[DRY RUN] " if dry_run else ""
+    subject = f"{prefix}showgrab digest — {count} event{'s' if count != 1 else ''}"
     body = "\n".join(lines).rstrip() + "\n"
     return subject, body

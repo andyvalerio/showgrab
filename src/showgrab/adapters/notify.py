@@ -45,10 +45,10 @@ class SmtpNotifier:
         self._timeout = timeout
         self._client_factory = client_factory or self._default_client
 
-    def send_digest(self, events: list[NotifyEvent]) -> bool:
+    def send_digest(self, events: list[NotifyEvent], *, dry_run: bool = False) -> bool:
         """Sends exactly one digest email when there are events; sends
         nothing and returns False when the list is empty (REQ-SG-021)."""
-        digest = build_digest(events)
+        digest = build_digest(events, dry_run=dry_run)
         if digest is None:
             return False
         subject, body = digest
