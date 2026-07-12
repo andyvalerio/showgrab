@@ -12,6 +12,8 @@
       <th>Mode</th>
       <th>Result</th>
       <th>Summary</th>
+      <th>Email</th>
+      <th>Digest</th>
     </tr>
   </thead>
   <tbody>
@@ -21,6 +23,19 @@
       <td>{% if r.dry_run %}<span class="status status-waiting">dry-run</span>{% else %}<span class="status status-grabbed">live</span>{% endif %}</td>
       <td>{% if r.ok %}<span class="test-ok">ok</span>{% else %}<span class="test-fail">failed</span>{% endif %}</td>
       <td>{{ r.summary }}</td>
+      <td class="muted">
+        {% if r.details.emailed %}sent
+        {% elif r.details.digest_body %}skipped (unchanged since last poll)
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {% if r.details.digest_body %}
+        <details>
+          <summary class="muted">Show digest</summary>
+          <pre style="white-space:pre-wrap;font-size:0.82rem;max-width:600px">{{ r.details.digest_body }}</pre>
+        </details>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>

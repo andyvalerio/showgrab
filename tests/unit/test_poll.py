@@ -4,7 +4,10 @@
 #   on any action failure, nothing from that poll is saved and the next poll
 #   retries from last-known-good state), REQ-SG-032 (an unhandled exception
 #   anywhere in the poll is caught, logged, best-effort notified, and never
-#   crashes the caller).
+#   crashes the caller), REQ-SG-041 (the activity log stores the exact
+#   digest body, not just counts), REQ-SG-042 (live mode always emails when
+#   there's a digest; dry-run mode suppresses re-sending an unchanged digest
+#   but still logs every poll, with whether it emailed visible).
 # Scenario: run_poll against fakes for every adapter and a real in-memory
 #   SQLite-backed ledger/activity store, covering the live-success,
 #   dry-run, execution-failure-then-retry, and unhandled-exception paths.
@@ -215,6 +218,115 @@ def test_dry_run_repeats_the_same_decision_every_poll():
             now=NOW,
         )
         assert outcome.grabbed == 1
+
+
+def test_dry_run_stores_digest_body_and_marks_emailed():
+    ledger_store, activity_log = make_stores()
+    notifier = FakeNotifier()
+    settings = make_settings(dry_run=True)
+
+    run_poll(
+        settings=settings,
+        ledger_store=ledger_store,
+        activity_log=activity_log,
+        fetch_releases=fetch_releases_factory(one_release()),
+        checks=make_checks(),
+        downloader=FakeDownloader(),
+        jellyfin=FakeJellyfinPaths(),
+        notifier=notifier,
+        now=NOW,
+    )
+
+    record = activity_log.recent()[0]
+    assert record.details["emailed"] is True
+    # REQ-SG-041: what's shown in the activity log is exactly what got
+    # emailed, not a re-derived or summarized version of it.
+    sent_events, _ = notifier.calls[0]
+    from showgrab.core.digest import build_digest
+
+    expected_subject, expected_body = build_digest(sent_events, dry_run=True)
+    assert record.details["digest_body"] == expected_body
+
+
+def test_dry_run_does_not_reemail_unchanged_digest():
+    # REQ-SG-042: since dry-run never persists, the same decision repeats
+    # every poll — without dedup this would re-email forever. The activity
+    # log must still record every poll either way.
+    ledger_store, activity_log = make_stores()
+    notifier = FakeNotifier()
+    settings = make_settings(dry_run=True)
+    releases = one_release()
+
+    for _ in range(3):
+        run_poll(
+            settings=settings,
+            ledger_store=ledger_store,
+            activity_log=activity_log,
+            fetch_releases=fetch_releases_factory(releases),
+            checks=make_checks(),
+            downloader=FakeDownloader(),
+            jellyfin=FakeJellyfinPaths(),
+            notifier=notifier,
+            now=NOW,
+        )
+
+    assert len(notifier.calls) == 1  # only the first poll actually emailed
+    records = activity_log.recent()
+    assert len(records) == 3  # but every poll was logged
+    assert records[0].details["emailed"] is False  # most recent (2 reruns skipped)
+    assert records[1].details["emailed"] is False
+    assert records[2].details["emailed"] is True  # oldest — the first, real send
+
+
+def test_dry_run_reemails_when_digest_content_changes():
+    ledger_store, activity_log = make_stores()
+    notifier = FakeNotifier()
+    settings = make_settings(dry_run=True)
+
+    run_poll(
+        settings=settings, ledger_store=ledger_store, activity_log=activity_log,
+        fetch_releases=fetch_releases_factory(one_release()), checks=make_checks(),
+        downloader=FakeDownloader(), jellyfin=FakeJellyfinPaths(), notifier=notifier, now=NOW,
+    )
+    # A different episode shows up on the next poll -> genuinely new content.
+    different_release = [parse_release(make_item("Silo S03E05 720p", show_id="1675", show_name="Silo", infohash="hd720b"))]
+    run_poll(
+        settings=settings, ledger_store=ledger_store, activity_log=activity_log,
+        fetch_releases=fetch_releases_factory(different_release), checks=make_checks(),
+        downloader=FakeDownloader(), jellyfin=FakeJellyfinPaths(), notifier=notifier,
+        now=NOW + timedelta(minutes=30),
+    )
+
+    assert len(notifier.calls) == 2
+    records = activity_log.recent()
+    assert records[0].details["emailed"] is True
+    assert records[1].details["emailed"] is True
+
+
+def test_live_mode_always_emails_even_with_identical_repeated_content():
+    # REQ-SG-042: unlike dry-run, live mode must NOT dedupe — a persistent
+    # real failure (identical error message poll after poll) must keep
+    # alerting, never go silent. grabbed/swapped digests don't hit this path
+    # in practice (they already dedupe via ledger persistence), but the rule
+    # itself must not special-case content, only settings.dry_run.
+    ledger_store, activity_log = make_stores()
+    notifier = FakeNotifier()
+    settings = make_settings(dry_run=False)
+    releases = one_release()
+    failing_downloader = FakeDownloader(fail_on={releases[0].item.magnet})
+
+    for i in range(2):
+        run_poll(
+            settings=settings, ledger_store=ledger_store, activity_log=activity_log,
+            fetch_releases=fetch_releases_factory(releases), checks=make_checks(),
+            downloader=failing_downloader, jellyfin=FakeJellyfinPaths(), notifier=notifier,
+            now=NOW + timedelta(minutes=30 * i),
+        )
+
+    assert len(notifier.calls) == 2  # both identical failures alerted, neither suppressed
+    records = activity_log.recent()
+    assert records[0].details["emailed"] is True
+    assert records[1].details["emailed"] is True
 
 
 # --- execution failure & retry -----------------------------------------

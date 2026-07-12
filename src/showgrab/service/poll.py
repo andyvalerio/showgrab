@@ -11,6 +11,7 @@ from typing import Callable
 
 from ..adapters.jellyfin import JellyfinLibrary
 from ..core import engine
+from ..core.digest import build_digest
 from ..core.downloader import Downloader
 from ..core.models import NotifyEvent
 from ..core.release import Release
@@ -108,8 +109,15 @@ def _run_poll_inner(
             # add/delete calls are both idempotent).
             ledger_store.save(ledger)
 
-    if notifier is not None and events:
-        notifier.send_digest(events, dry_run=settings.dry_run)
+    digest = build_digest(events, dry_run=settings.dry_run)
+    digest_body = digest[1] if digest else None
+    previous = activity_log.recent(limit=1)
+    previous_digest_body = previous[0].details.get("digest_body") if previous else None
+    emailed = False
+    if digest is not None and _should_send_digest(settings.dry_run, digest_body, previous_digest_body):
+        if notifier is not None:
+            notifier.send_digest(events, dry_run=settings.dry_run)
+            emailed = True
 
     grabbed = sum(1 for e in events if e.kind == "grabbed")
     swapped = sum(1 for e in events if e.kind == "swapped")
@@ -124,7 +132,13 @@ def _run_poll_inner(
         dry_run=settings.dry_run,
         ok=execution_ok,
         summary=summary,
-        details={"grabbed": grabbed, "swapped": swapped, "events": len(events)},
+        details={
+            "grabbed": grabbed,
+            "swapped": swapped,
+            "events": len(events),
+            "digest_body": digest_body,
+            "emailed": emailed,
+        },
     )
 
     return PollOutcome(
@@ -135,6 +149,23 @@ def _run_poll_inner(
         execution_ok=execution_ok,
         events=events,
     )
+
+
+def _should_send_digest(dry_run: bool, current_body: str | None, previous_body: str | None) -> bool:
+    """Live mode always sends when there's a digest — grabbed/swapped events
+    already naturally dedupe poll-to-poll via ledger persistence
+    (REQ-SG-014/027), and an execution-error digest repeating identically
+    across polls means a real, ongoing failure that should keep alerting,
+    never go silent.
+
+    Dry-run mode never persists (REQ-SG-026 — that's what makes it safe to
+    run before going live), so without this check the exact same decision
+    would be re-derived, and re-emailed, every single poll forever. Skip
+    sending when nothing has changed since the last poll; the activity log
+    still records every poll regardless (REQ-SG-041)."""
+    if not dry_run:
+        return True
+    return current_body != previous_body
 
 
 def _safe_log_failure(activity_log: ActivityLogStore, now: datetime, dry_run: bool, exc: Exception) -> None:

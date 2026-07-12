@@ -319,6 +319,28 @@ and an automatic one share identical qBittorrent-facing behavior.
 - **REQ-SG-040** — The activity log page MUST render `ActivityLogStore`
   records in reverse-chronological order (most recent first).
 
+### Phase 4 addendum — full digest visibility & dry-run email dedup
+
+Found live in production (2026-07-12, first real dry-run poll): the
+activity log only showed a one-line summary ("7 grabbed, 0 swapped") with no
+way to see *which* episodes or why — the same detail that's in the digest
+email was invisible in the UI. Separately: since dry-run mode never
+persists (REQ-SG-026), the identical decision is re-derived every poll,
+and — with no dedup — was being re-emailed every single poll too
+(every 30 min by default, indefinitely, for as long as dry-run stayed on).
+
+- **REQ-SG-041** — The activity log MUST store the exact digest body that
+  would be (or was) emailed for that poll, and the activity page MUST let a
+  user expand any record to see it verbatim — not just the counts.
+- **REQ-SG-042** — In live mode, a digest MUST be sent every time one is
+  produced (grabbed/swapped events already dedupe via ledger persistence;
+  a repeating execution-error digest means a real ongoing failure and must
+  keep alerting, never go silent). In dry-run mode, a digest MUST be
+  suppressed (not sent) when its body is identical to the immediately
+  preceding activity record's digest body — but the activity log MUST still
+  record every poll regardless of whether an email was actually sent, with
+  that fact visible (`emailed: true/false`).
+
 ## Phase 5 — deploy to production
 
 No dev cluster exists; this deploys straight to the Beelink. See the

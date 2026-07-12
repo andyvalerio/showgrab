@@ -333,6 +333,26 @@ def test_activity_log_renders_most_recent_first(monkeypatch):
         assert second_pos < first_pos  # most recent (second) appears first
 
 
+def test_activity_log_shows_expandable_digest_and_email_status(monkeypatch):
+    app, settings_store, ledger_store, activity_log = make_app(monkeypatch)
+    activity_log.record(
+        NOW, dry_run=True, ok=True, summary="1 grabbed",
+        details={"grabbed": 1, "swapped": 0, "events": 1,
+                 "digest_body": "Grabbed (1)\n  - Silo: S03E02 720p\n", "emailed": True},
+    )
+    activity_log.record(
+        NOW, dry_run=True, ok=True, summary="1 grabbed (repeat)",
+        details={"grabbed": 1, "swapped": 0, "events": 1,
+                 "digest_body": "Grabbed (1)\n  - Silo: S03E02 720p\n", "emailed": False},
+    )
+
+    with TestClient(app) as client:
+        resp = client.get("/activity")
+        assert "Silo: S03E02 720p" in resp.text  # full digest visible, not just the summary
+        assert "sent" in resp.text
+        assert "skipped (unchanged since last poll)" in resp.text
+
+
 def test_static_htmx_is_served(monkeypatch):
     app, *_ = make_app(monkeypatch)
     with TestClient(app) as client:
