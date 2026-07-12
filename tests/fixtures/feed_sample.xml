@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:tv="https://showrss.info"><channel>
+<title>showRSS personal feed</title><link>https://showrss.info</link><ttl>30</ttl>
+<description>showRSS personal feed</description>
+
+<item>
+  <title>Silo S03E02 Its All Good 2160P ATVP WEB DL DDP5 1 Atmos DV HDR10Plus H 265</title>
+  <link>magnet:?xt=urn:btih:AAA2160</link>
+  <guid isPermaLink="false">g1</guid>
+  <pubDate>Fri, 10 Jul 2026 16:05:03 +0000</pubDate>
+  <tv:show_id>1675</tv:show_id><tv:external_id>38052</tv:external_id>
+  <tv:show_name>Silo</tv:show_name><tv:episode_id>241120</tv:episode_id>
+  <tv:raw_title>Silo S03E02 Its All Good 2160P ATVP WEB DL DDP5 1 Atmos DV HDR10Plus H 265</tv:raw_title>
+  <tv:info_hash>aaa2160</tv:info_hash>
+</item>
+<item>
+  <title>Silo S03E02 Its All Good 1080p ATVP WEB DL DDP5 1 H 264 NTb</title>
+  <link>magnet:?xt=urn:btih:AAA1080</link>
+  <guid isPermaLink="false">g2</guid>
+  <pubDate>Fri, 10 Jul 2026 01:55:03 +0000</pubDate>
+  <tv:show_id>1675</tv:show_id><tv:external_id>38052</tv:external_id>
+  <tv:show_name>Silo</tv:show_name><tv:episode_id>241097</tv:episode_id>
+  <tv:raw_title>Silo S03E02 Its All Good 1080p ATVP WEB DL DDP5 1 H 264 NTb</tv:raw_title>
+  <tv:info_hash>aaa1080</tv:info_hash>
+</item>
+<item>
+  <title>Silo S03E02 Its All Good 720p ATVP WEB DL DDP5 1 Atmos H 264 playWEB</title>
+  <link>magnet:?xt=urn:btih:AAA720</link>
+  <guid isPermaLink="false">g3</guid>
+  <pubDate>Fri, 10 Jul 2026 01:35:03 +0000</pubDate>
+  <tv:show_id>1675</tv:show_id><tv:external_id>38052</tv:external_id>
+  <tv:show_name>Silo</tv:show_name><tv:episode_id>241093</tv:episode_id>
+  <tv:raw_title>Silo S03E02 Its All Good 720p ATVP WEB DL DDP5 1 Atmos H 264 playWEB</tv:raw_title>
+  <tv:info_hash>aaa720</tv:info_hash>
+</item>
+
+<item>
+  <title>House of the Dragon S03E02 Queens Landing REPACK 720p HEVC x265 MeGusta</title>
+  <link>magnet:?xt=urn:btih:HOTD720R</link>
+  <guid isPermaLink="false">g4</guid>
+  <pubDate>Mon, 29 Jun 2026 04:45:04 +0000</pubDate>
+  <tv:show_id>500</tv:show_id><tv:external_id>9999</tv:external_id>
+  <tv:show_name>House of the Dragon</tv:show_name><tv:episode_id>240432</tv:episode_id>
+  <tv:raw_title>House of the Dragon S03E02 Queens Landing REPACK 720p HEVC x265 MeGusta</tv:raw_title>
+  <tv:info_hash>hotd720repack</tv:info_hash>
+</item>
+
+<item>
+  <title>Avatar The Last Airbender 2024 S01E01 Aang 2160p NF WEB DL DDP5 1 Atmos DV</title>
+  <link>magnet:?xt=urn:btih:ATLA2160</link>
+  <guid isPermaLink="false">g5</guid>
+  <pubDate>Fri, 26 Jun 2026 00:25:03 +0000</pubDate>
+  <tv:show_id>800</tv:show_id><tv:external_id>44444</tv:external_id>
+  <tv:show_name>Avatar: The Last Airbender</tv:show_name><tv:episode_id>240275</tv:episode_id>
+  <tv:raw_title>Avatar The Last Airbender 2024 S01E01 Aang 2160p NF WEB DL DDP5 1 Atmos DV</tv:raw_title>
+  <tv:info_hash>atla2160</tv:info_hash>
+</item>
+
+<item>
+  <title>Some Show S01E05 1080p REMUX FLAC AVC</title>
+  <link>magnet:?xt=urn:btih:REMUX1080</link>
+  <guid isPermaLink="false">g6</guid>
+  <pubDate>Sat, 27 Jun 2026 15:45:04 +0000</pubDate>
+  <tv:show_id>900</tv:show_id><tv:external_id>55555</tv:external_id>
+  <tv:show_name>Some Show</tv:show_name><tv:episode_id>240381</tv:episode_id>
+  <tv:raw_title>Some Show S01E05 1080p REMUX FLAC AVC</tv:raw_title>
+  <tv:info_hash>remux1080</tv:info_hash>
+</item>
+
+<item>
+  <title>Weird Release With No Quality Or Episode Marker</title>
+  <link>magnet:?xt=urn:btih:WEIRD</link>
+  <guid isPermaLink="false">g7</guid>
+  <pubDate>Sat, 27 Jun 2026 15:45:04 +0000</pubDate>
+  <tv:show_id>901</tv:show_id>
+  <tv:show_name>Weird Show</tv:show_name><tv:episode_id>999999</tv:episode_id>
+  <tv:raw_title>Weird Release With No Quality Or Episode Marker</tv:raw_title>
+  <tv:info_hash>weird</tv:info_hash>
+</item>
+
+</channel></rss>
