@@ -32,6 +32,13 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Templates/static assets aren't .py files, so setuptools' default discovery
+# skips them — found by actually running a built package (`pip install .`
+# then executing it), not by any test, since every test/dev run imports from
+# src/ directly and never exercises the packaged artifact.
+showgrab = ["service/web/templates/**/*.html", "service/web/static/*"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]

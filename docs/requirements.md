@@ -318,3 +318,21 @@ and an automatic one share identical qBittorrent-facing behavior.
   never a separate, divergent code path.
 - **REQ-SG-040** — The activity log page MUST render `ActivityLogStore`
   records in reverse-chronological order (most recent first).
+
+## Phase 5 — deploy to production
+
+No dev cluster exists; this deploys straight to the Beelink. See the
+home-server repo's `docs/showgrab-architecture.md` for the full deployment
+plan and the staged (dry-run first) rollout this phase follows.
+
+- **Packaging note (found 2026-07-12):** running the actual built Docker
+  image was the first time templates/static assets were exercised through a
+  real `pip install` rather than a source checkout — and it broke
+  (`RuntimeError: Directory '.../service/web/static' does not exist`).
+  setuptools doesn't include non-`.py` files by default; every test and dev
+  run imports from `src/` directly via `pythonpath`, so nothing before an
+  actual image build could have caught this. Fixed via
+  `[tool.setuptools.package-data]` in `pyproject.toml`. Lesson: a package
+  isn't verified until something has actually installed and run the built
+  artifact, not just the source tree — the same principle as live-testing
+  adapters, one layer up the stack.
