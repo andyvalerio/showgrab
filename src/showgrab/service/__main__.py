@@ -17,11 +17,6 @@ import httpx
 import uvicorn
 
 from ..adapters.feed import parse_feed
-from ..adapters.jellyfin import JellyfinLibrary
-from ..adapters.notify import SmtpConfig, SmtpNotifier
-from ..adapters.qbittorrent import QbittorrentDownloader
-from ..adapters.tvmaze import TvMazeMetadata
-from ..core import engine
 from ..core.release import parse_release
 from ..store.activity_store import ActivityLogStore
 from ..store.db import init_db, make_engine, make_session_factory
@@ -29,6 +24,7 @@ from ..store.ledger_store import LedgerStore
 from ..store.settings_store import SettingsStore
 from .app import create_app
 from .poll import run_poll
+from .wiring import build_checks, build_downloader, build_jellyfin, build_notifier
 
 
 def _fetch_releases(feed_url: str) -> list:
@@ -49,47 +45,30 @@ def build_app():
 
     startup_settings = settings_store.load()
 
-    jellyfin = JellyfinLibrary(startup_settings.jellyfin_url, startup_settings.jellyfin_api_key)
-    tvmaze = TvMazeMetadata()
-    downloader = QbittorrentDownloader(
-        startup_settings.qbittorrent_url,
-        startup_settings.qbittorrent_username,
-        startup_settings.qbittorrent_password,
-    )
-    notifier = (
-        SmtpNotifier(
-            SmtpConfig(
-                host=startup_settings.smtp_host,
-                port=startup_settings.smtp_port,
-                username=startup_settings.smtp_username,
-                password=startup_settings.smtp_password,
-                from_addr=startup_settings.smtp_from,
-                to_addrs=startup_settings.smtp_to,
-                use_tls=startup_settings.smtp_use_tls,
-                use_ssl=startup_settings.smtp_use_ssl,
-            )
-        )
-        if startup_settings.smtp_host
-        else None
-    )
-
     def poll_fn():
-        # Re-read settings every poll so edits (thresholds, dry_run, feed
-        # URL, ...) take effect without a restart.
+        # Rebuild everything from freshly-read settings every poll — a
+        # settings-page edit (credentials, URLs, thresholds, dry_run, feed
+        # URL, ...) takes effect on the very next poll, no restart needed.
         current = settings_store.load()
         run_poll(
             settings=current,
             ledger_store=ledger_store,
             activity_log=activity_log,
             fetch_releases=_fetch_releases,
-            checks=engine.Checks(jellyfin, tvmaze),
-            downloader=downloader,
-            jellyfin=jellyfin,
-            notifier=notifier,
+            checks=build_checks(current),
+            downloader=build_downloader(current),
+            jellyfin=build_jellyfin(current),
+            notifier=build_notifier(current),
             now=datetime.now(timezone.utc),
         )
 
-    return create_app(poll_fn=poll_fn, poll_interval_minutes=startup_settings.poll_interval_minutes)
+    return create_app(
+        poll_fn=poll_fn,
+        poll_interval_minutes=startup_settings.poll_interval_minutes,
+        settings_store=settings_store,
+        ledger_store=ledger_store,
+        activity_log=activity_log,
+    )
 
 
 app = build_app()

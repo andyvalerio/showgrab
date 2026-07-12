@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}showgrab{% endblock %}</title>
+  <script src="/static/htmx.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/settings">Settings</a>
+    <a href="/activity">Activity</a>
+    <form method="post" action="/poll/run" style="display:inline">
+      <button type="submit">Run poll now</button>
+    </form>
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

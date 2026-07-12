@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}showgrab — activity{% endblock %}
+{% block content %}
+<h1>Activity log</h1>
+{% if not records %}
+<p class="muted">No polls have run yet.</p>
+{% else %}
+<table>
+  <thead>
+    <tr>
+      <th>When</th>
+      <th>Mode</th>
+      <th>Result</th>
+      <th>Summary</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in records %}
+    <tr>
+      <td class="muted">{{ r.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+      <td>{% if r.dry_run %}<span class="status status-waiting">dry-run</span>{% else %}<span class="status status-grabbed">live</span>{% endif %}</td>
+      <td>{% if r.ok %}<span class="test-ok">ok</span>{% else %}<span class="test-fail">failed</span>{% endif %}</td>
+      <td>{{ r.summary }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

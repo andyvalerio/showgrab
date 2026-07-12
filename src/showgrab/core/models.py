@@ -18,10 +18,17 @@ class Status(str, Enum):
     SKIPPED_HAVE = "skipped-have"
     SKIPPED_OLD = "skipped-old"
     NEEDS_ATTENTION = "needs-attention"
+    IGNORED = "ignored"  # user-initiated (web UI), never set by the engine itself
 
 
 #: Statuses that never produce further download actions.
-TERMINAL = {Status.SETTLED, Status.SKIPPED_HAVE, Status.SKIPPED_OLD, Status.NEEDS_ATTENTION}
+TERMINAL = {
+    Status.SETTLED,
+    Status.SKIPPED_HAVE,
+    Status.SKIPPED_OLD,
+    Status.NEEDS_ATTENTION,
+    Status.IGNORED,
+}
 
 
 @dataclass

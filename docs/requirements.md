@@ -262,3 +262,59 @@ minutes that could otherwise have silently broken grabs in production.
 TVmaze, SMTP/Gmail). No real credentials are stored anywhere in this repo —
 they were passed as environment variables for a single manual run of
 `scripts/live_smoke_test.py` and are not persisted.
+
+## Phase 4 — web UI
+
+Deliberately small (per the architecture doc): a dashboard, a settings page,
+an activity log, and per-episode manual actions. FastAPI + Jinja2 + HTMX —
+no JS framework, no build step. No auth in v1 (LAN/tailnet only, matching
+every other service in this cluster); a basic-auth flag is a pre-publish
+TODO, not a v1 requirement.
+
+### Manual episode actions
+
+These are user-decided, one-off overrides — distinct from `service/poll.py`'s
+automatic engine-decided actions — living in `service/actions.py`, built on
+the same `execute_actions`/`resolve_save_path` machinery so a manual action
+and an automatic one share identical qBittorrent-facing behavior.
+
+- **REQ-SG-033** — **Ignore**: MUST mark an episode terminal (`ignored`) with
+  no further engine action ever, and MUST suppress any future notify event
+  for it (setting `notified=True` at the same time it's ignored) — a
+  deliberate user decision should never later show up in a digest as if it
+  were a surprise.
+- **REQ-SG-034** — **Retry**: MUST only apply to a `needs-attention` episode,
+  resetting it to `discovered` (and `notified=False`) so the gates run again
+  from scratch on the next poll; MUST be a no-op for any other status.
+- **REQ-SG-035** — **Grab now**: MUST only apply to an episode still
+  `discovered` or `waiting` with at least one known variant; MUST select the
+  best-scoring variant exactly as the engine's automatic grab would
+  (REQ-SG-011's scoring, not a different rule), execute it for real, and only
+  update the ledger to `grabbed` if execution actually succeeded — mirroring
+  REQ-SG-027's persist-only-on-success rule at the single-action scale.
+  MUST NOT double-grab: applying it to an already-`grabbed`/`swapped`/
+  terminal episode MUST be a no-op.
+- **REQ-SG-036** — **Manual swap**: MUST only apply to a variant already
+  known for that episode (never an arbitrary infohash) and different from
+  the currently-chosen one; MUST execute a real delete-with-files +
+  add-magnet and only update the ledger if that succeeded.
+
+### Settings & connections
+
+- **REQ-SG-037** — The settings page MUST read and write through the same
+  `SettingsStore` the poll loop uses — there is exactly one definition of
+  "current settings," never a UI-only shadow copy that could drift from what
+  the scheduler is actually running with.
+- **REQ-SG-038** — Each configurable adapter (qBittorrent, Jellyfin, SMTP)
+  MUST have a test-connection action usable from the settings form using the
+  *currently entered* values, not only the last-saved ones — so a user can
+  validate new credentials before committing them.
+
+### Dashboard & activity log
+
+- **REQ-SG-039** — The dashboard MUST render the live ledger (via
+  `LedgerStore`, not a cache) and MUST expose a manual "run poll now" that
+  invokes the exact same poll function the scheduler runs on its cadence —
+  never a separate, divergent code path.
+- **REQ-SG-040** — The activity log page MUST render `ActivityLogStore`
+  records in reverse-chronological order (most recent first).

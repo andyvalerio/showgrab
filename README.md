@@ -10,12 +10,14 @@ It also refuses to re-download old episodes that get republished to the feed,
 checking the media library (Jellyfin) and the episode's air date (TVmaze)
 before grabbing, and emails a digest when something needs a human.
 
-> **Status: early development.** Phase 1 (headless decision engine), phase 2
-> (real adapters), and phase 3 (persistent service: scheduler, SQLite-backed
-> settings/ledger, dry-run mode, `/healthz`) are implemented and tested. The
-> web UI and packaging are next — see `docs/` and the architecture doc.
-> `showgrab-serve` runs the real service; `showgrab.cli` remains a
-> stub-checks dry-run tool for eyeballing the engine against a feed.
+> **Status: early development.** Phases 1–4 are implemented and tested:
+> headless engine, real adapters, a persistent service (scheduler, SQLite,
+> dry-run mode, `/healthz`), and now a small web UI (dashboard, settings,
+> activity log, manual episode actions). Deployment (Docker image, running
+> this on the actual home server) and publishing are next — see `docs/` and
+> the architecture doc. `showgrab-serve` runs the real service, UI included;
+> `showgrab.cli` remains a stub-checks dry-run tool for eyeballing the engine
+> against a feed.
 
 ## How it decides
 
@@ -66,14 +68,22 @@ src/showgrab/
                (Downloader), Jellyfin (LibraryChecker + series path lookup), TVmaze
                (MetadataResolver), SMTP digest notifier. Never hardcode credentials.
   store/       SQLite persistence — settings (env-seeded once), ledger, activity log
-  service/     the runnable service — poll orchestration (dry-run/persistence-safety
-               rules), execution against the downloader, APScheduler wiring,
-               FastAPI app (/healthz), the showgrab-serve entrypoint
+  service/     the runnable service
+    wiring.py    builds real adapters from Settings — one definition shared by the
+                 poll loop and the web UI, rebuilt fresh from current settings
+                 every time (a settings-page edit takes effect without a restart)
+    poll.py      the automatic per-poll cycle (dry-run/persistence-safety rules)
+    actions.py   user-initiated manual overrides (ignore/retry/grab-now/swap) —
+                 same execute_actions machinery poll.py uses, one-off instead
+    executor.py  wires engine (or manual) actions into real Downloader calls
+    scheduler.py, app.py   APScheduler + FastAPI (/healthz), showgrab-serve entrypoint
+    web/         dashboard, settings, activity log — FastAPI + Jinja2 + HTMX
   cli.py       dry-run entry point (stubbed checks; separate from the real service)
 docs/requirements.md   REQ-SG-* catalog; every test header cites the IDs it verifies
 tests/                 unit tests — adapters against httpx.MockTransport / fake SMTP;
                         store against in-memory SQLite; service layer proves the
-                        dry-run/execution-failure persistence rules against real stores
+                        dry-run/execution-failure persistence rules against real stores;
+                        web routes driven through FastAPI's TestClient
 ```
 
 ## Adapters
@@ -112,6 +122,28 @@ rescheduled at runtime when settings change), runs the engine, and either:
 Settings live in SQLite, seeded once from `SHOWGRAB_*` env vars on first
 start; edits after that always win over env. See
 `store/settings_store.py` for the full list of variables.
+
+## The web UI (phase 4)
+
+`showgrab-serve` also serves a small dashboard at `/` — deliberately minimal,
+plain HTML forms first (works with zero JavaScript), HTMX layered on only
+where a partial swap earns its keep (the settings page's test-connection
+buttons):
+
+- **Dashboard** (`/`) — every tracked episode with its status and variants;
+  per-episode actions where they apply: **Grab now** (discovered/waiting,
+  picks the same best-scoring variant the automatic grab would), **Retry**
+  (needs-attention → discovered), **Swap to** a specific known variant, and
+  **Ignore** (permanent, silences future notifications for that episode).
+  Note: while dry-run is on, this stays empty by design — dry-run never
+  writes to the ledger — see `/activity` and the digest email instead.
+- **Settings** (`/settings`) — every value in `SettingsStore`, plus a
+  test-connection button per adapter (qBittorrent, Jellyfin, SMTP) that
+  checks the values currently in the form, not just what's saved.
+- **Activity** (`/activity`) — every poll's result, most recent first.
+
+All actions are read/write against the exact same stores the poll loop
+uses — no shadow state, no separate code path.
 
 ## License
 
