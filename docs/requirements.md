@@ -80,6 +80,12 @@ hardcodes or guesses a secret.
 - **REQ-SG-016** — MUST authenticate against the qBittorrent WebUI API
   (cookie-based session) and add a magnet with an explicit save path (and
   optional category), with `autoTMM` disabled so the save path is honored.
+  MUST accept both the legacy plain-text contract (`200` + `"Ok."`/`"Fails."`)
+  and the modern one (`204` empty body on success, `401` on failure,
+  `torrents/add` returning `200` with a JSON summary that can itself report
+  `failure_count > 0`) — confirmed by live-testing against a real qBittorrent
+  5.2.3 instance, which uses the modern contract exclusively; docs/tutorials
+  describing the old contract are stale for current versions.
 - **REQ-SG-017** — MUST delete a torrent **with its downloaded files** given
   an infohash (the only deletion mode this adapter exposes — showgrab never
   deletes torrents without files, since a stale torrent-only delete would
@@ -130,3 +136,36 @@ engine's first-sight gates must not let that turn into silent data loss.
   skipped/needs-attention; the same episode is re-evaluated on the next poll
   (bounded retry via the natural poll cadence, no in-process retry loop, no
   swallowing a transient failure into a wrong permanent state).
+
+### Live verification (2026-07-12)
+
+The mocked unit tests above prove the code does what *we assumed* the real
+APIs do — not that the assumption was correct. `scripts/live_smoke_test.py`
+exists specifically to close that gap: a manual, env-var-configured script
+that talks to real services. Run against the actual deployment target
+(qBittorrent, Jellyfin, TVmaze):
+
+- TVmaze: `test_connection()` and a real `airdate()` lookup (Silo S03E02) —
+  passed as expected, no surprises.
+- Jellyfin: `test_connection()`, `has_episode()` false for a nonexistent
+  series, and **true** for a real already-downloaded episode (American Dad!
+  S22E10) — passed.
+- qBittorrent: `test_connection()`, then a real `add_magnet()` +
+  `delete_with_files()` round-trip using a legal public-domain test torrent
+  (Sintel) in an isolated save path/category — **initially failed**. The
+  live server (qBittorrent 5.2.3) uses response contracts different from
+  what REQ-SG-016 originally assumed (see above); the adapter and its mocks
+  were both updated to match reality, and the fix was re-verified live
+  before being trusted. One specific magnet hash (a different, equally
+  legal public-domain torrent) was separately found to get a hard `409` from
+  this server for reasons unrelated to showgrab (likely a blocklist/tracker
+  interaction) — noted in the script, not investigated further.
+- SMTP: not yet live-tested (no credentials supplied at the time of this
+  pass) — `test_connection()`/`send_digest()` remain verified against fakes
+  only until run live.
+
+Takeaway worth keeping in mind for every future adapter: **mocks encode
+assumptions, and assumptions about a real API's exact status codes/response
+bodies are exactly the kind of thing that's wrong until proven otherwise.**
+Live-test before trusting, the same way this pass caught a real bug in
+minutes that could otherwise have silently broken grabs in production.
