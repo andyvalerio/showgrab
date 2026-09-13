@@ -14,6 +14,7 @@
 from datetime import datetime, timedelta, timezone
 
 from showgrab.core import engine
+from showgrab.core.digest import DIGEST_KINDS
 from showgrab.core.ledger import Ledger
 from showgrab.core.models import (
     Config,
@@ -247,6 +248,93 @@ def test_item_without_episode_marker_is_needs_attention_once():
     assert [e.kind for e in r1.events] == ["needs-attention"]
     r2 = engine.plan(ledger, r, NOW, cfg, checks())
     assert r2.events == []
+
+
+# --- terminal-state silence ----------------------------------------------
+# Regression: every terminal entry is re-walked by plan() on every poll, so a
+# blanket notify on TERMINAL leaked an event for statuses meant to be silent.
+# In production that arrived as a digest email reading "settled (1)" about a
+# week after each grab, and one reading "skipped-have (1)" for every episode
+# already in the library. REQ-SG-021 fixes the digest kinds to grabbed /
+# swapped / skipped-old / needs-attention; neither of those is among them.
+
+
+def test_settling_emits_no_event_on_the_poll_that_settles():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720, swap_window_days=7.0)
+    r = [rel("Show S01E01 720p", show_id="1", infohash="p720")]
+    engine.plan(ledger, r, NOW, cfg, checks())
+    assert ledger.all()[0].status is Status.GRABBED
+
+    settling = engine.plan(ledger, r, NOW + timedelta(days=8), cfg, checks())
+    assert ledger.all()[0].status is Status.SETTLED
+    assert settling.events == []  # REQ-SG-012: settling is silent
+
+
+def test_settled_entry_stays_silent_on_every_later_poll():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720, swap_window_days=7.0)
+    r = [rel("Show S01E01 720p", show_id="1", infohash="p720")]
+    engine.plan(ledger, r, NOW, cfg, checks())
+    engine.plan(ledger, r, NOW + timedelta(days=8), cfg, checks())
+    assert ledger.all()[0].status is Status.SETTLED
+
+    # The bug surfaced one poll AFTER the settle, not on the settling poll
+    # itself — so re-plan repeatedly, as a real 2-hourly scheduler does.
+    for hours in range(2, 25, 2):
+        later = engine.plan(ledger, r, NOW + timedelta(days=8, hours=hours), cfg, checks())
+        assert later.events == [], f"settled entry notified {hours}h after settling"
+        assert later.actions == []
+
+
+def test_skipped_have_stays_silent_on_every_later_poll():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720)
+    r = [rel("Silo S03E02 720p", show_id="1", infohash="a")]
+    engine.plan(ledger, r, NOW, cfg, checks(have=True))
+    assert ledger.all()[0].status is Status.SKIPPED_HAVE
+
+    # REQ-SG-008 is silent for the episode's whole life, not just first sight.
+    for hours in range(2, 25, 2):
+        later = engine.plan(ledger, r, NOW + timedelta(hours=hours), cfg, checks(have=True))
+        assert later.events == [], f"skipped-have entry notified {hours}h after the gate"
+
+
+def test_ignored_entry_is_never_notified():
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720)
+    r = [rel("Show S01E01 720p", show_id="1", infohash="p720")]
+    engine.plan(ledger, r, NOW, cfg, checks())
+    entry = ledger.all()[0]
+    # What the web UI's ignore action does (REQ-SG-033), minus the notified
+    # flag it also sets — so this asserts the engine's own silence, not that
+    # the flag happens to paper over it.
+    entry.status = Status.IGNORED
+    entry.notified = False
+
+    later = engine.plan(ledger, r, NOW + timedelta(days=1), cfg, checks())
+    assert later.events == []
+
+
+def test_full_lifecycle_only_produces_digest_kinds():
+    """End-to-end guard: whatever the engine emits across a grab -> swap ->
+    settle lifecycle must be renderable by the digest, which only titles the
+    four REQ-SG-021 kinds and would otherwise print a raw status string."""
+    ledger = Ledger()
+    cfg = Config(preferred_quality=Quality.HD720, wait_hours=6.0, swap_window_days=7.0)
+    only_1080 = [rel("Show S01E01 1080p", show_id="1", infohash="hd")]
+    with_720 = only_1080 + [rel("Show S01E01 720p", show_id="1", infohash="sd720")]
+
+    emitted = []
+    emitted += engine.plan(ledger, only_1080, NOW, cfg, checks()).events
+    emitted += engine.plan(ledger, only_1080, NOW + timedelta(hours=7), cfg, checks()).events
+    emitted += engine.plan(ledger, with_720, NOW + timedelta(days=2), cfg, checks()).events
+    for day in range(8, 15):
+        emitted += engine.plan(ledger, with_720, NOW + timedelta(days=day), cfg, checks()).events
+
+    assert ledger.all()[0].status is Status.SETTLED
+    assert [e.kind for e in emitted] == ["grabbed", "swapped"]
+    assert set(e.kind for e in emitted) <= set(DIGEST_KINDS)
 
 
 # --- gate resilience (REQ-SG-023) -----------------------------------------

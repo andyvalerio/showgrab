@@ -30,6 +30,18 @@ TERMINAL = {
     Status.IGNORED,
 }
 
+#: Terminal statuses that warrant exactly one notify event when an entry
+#: reaches them. Deliberately narrower than TERMINAL: reaching a terminal
+#: state stops downloads, which is not the same as being worth an email.
+#: The other three are silent by design — `skipped-have` (REQ-SG-008),
+#: `settled` (REQ-SG-012: settling is a state change, nothing happened to
+#: report), and `ignored` (the user chose it). REQ-SG-021 fixes the digest's
+#: kinds to exactly the four that correspond to these two plus grabbed/swapped.
+NOTIFIABLE = {
+    Status.SKIPPED_OLD,
+    Status.NEEDS_ATTENTION,
+}
+
 
 @dataclass
 class Config:

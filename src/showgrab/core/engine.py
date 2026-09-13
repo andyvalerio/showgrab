@@ -16,6 +16,7 @@ from .models import (
     Config,
     GrabAction,
     LedgerEntry,
+    NOTIFIABLE,
     NotifyEvent,
     PlanResult,
     Status,
@@ -101,8 +102,16 @@ def _decide(
     checks: Checks,
 ) -> tuple[list, list]:
     if entry.status in TERMINAL:
-        # Emit the one-time notify for skip/attention outcomes if still pending.
-        return [], _notify_once(entry)
+        # Emit the one-time notify for skip/attention outcomes if still
+        # pending — orphan entries enter NEEDS_ATTENTION at ingest without
+        # going through a path that notifies, so this is where they report.
+        # Only NOTIFIABLE statuses may do so: every terminal entry is revisited
+        # on every poll, so notifying on all of TERMINAL emailed a `settled`
+        # line for each episode a week after its grab, and a `skipped-have`
+        # line for each episode already in the library (REQ-SG-008/012/021).
+        if entry.status in NOTIFIABLE:
+            return [], _notify_once(entry)
+        return [], []
 
     if entry.status == Status.DISCOVERED:
         events = _run_gates(entry, now, config, checks)

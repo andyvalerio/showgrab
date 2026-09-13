@@ -15,7 +15,10 @@ _TITLES = {
     "skipped-old": "Skipped (too old)",
     "needs-attention": "Needs attention",
 }
-_ORDER = ["grabbed", "swapped", "skipped-old", "needs-attention"]
+#: The kinds a digest knows how to title, in the order they appear
+#: (REQ-SG-021). This is the notify-event contract: the engine must not emit a
+#: kind outside this list, or the digest would render its raw status string.
+DIGEST_KINDS = ["grabbed", "swapped", "skipped-old", "needs-attention"]
 
 
 def build_digest(events: list[NotifyEvent], *, dry_run: bool = False) -> tuple[str, str] | None:
@@ -34,7 +37,7 @@ def build_digest(events: list[NotifyEvent], *, dry_run: bool = False) -> tuple[s
     if dry_run:
         lines.append("DRY RUN — nothing below was actually downloaded or deleted.")
         lines.append("")
-    seen_kinds = list(_ORDER) + [k for k in by_kind if k not in _ORDER]
+    seen_kinds = list(DIGEST_KINDS) + [k for k in by_kind if k not in DIGEST_KINDS]
     for kind in seen_kinds:
         group = by_kind.get(kind)
         if not group:
