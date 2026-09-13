@@ -66,6 +66,9 @@ th { color: var(--muted); font-weight: 600; }
 .status-grabbed, .status-swapped { background: #16a34a33; color: #16a34a; }
 .status-waiting, .status-discovered { background: #6b728033; color: var(--muted); }
 .status-needs-attention { background: #dc262633; color: #dc2626; }
+/* Amber, not red: a stuck transfer is a warning that often clears itself,
+   unlike needs-attention which always wants a human. */
+.status-stuck { background: #d9770633; color: #d97706; }
 .status-skipped-old, .status-skipped-have, .status-settled, .status-ignored {
   background: #6b728022; color: var(--muted);
 }

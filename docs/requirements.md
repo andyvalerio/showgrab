@@ -209,6 +209,61 @@ these requirements are what make that safe.
   causes redundant (but harmless) re-execution of that poll's other,
   already-succeeded actions next cycle.
 
+## Phase 6 — download follow-through
+
+Everything above stops caring the moment a magnet is handed to qBittorrent.
+A torrent with no seeders, a hash the client silently dropped, or a transfer
+that simply never finishes all looked identical to a completed download: the
+episode sat at `grabbed` forever and nothing ever said so.
+
+- **REQ-SG-043** — The Downloader contract MUST expose a **batched**
+  transfer-status lookup: given the infohashes currently in flight, return
+  each one's progress (0.0-1.0), the client's own state string, and whether
+  it is complete. One lookup per poll for every in-flight episode, never one
+  call per episode.
+- **REQ-SG-044** — Completion MUST be decided from `progress`/`amount_left`,
+  never from qBittorrent's `state` string. The finished-but-idle state names
+  changed between generations (4.x `pausedUP` became 5.x `stoppedUP`), so
+  matching on state would silently mis-read one version or the other, exactly
+  the class of stale-contract bug the phase-2 postmortem documents. The state
+  string is carried for the digest detail only.
+- **REQ-SG-045** — On every poll *after* the one that issued the grab, an
+  in-flight episode's transfer MUST be checked. If it is not complete, the
+  episode MUST be marked `stuck` and emit **exactly one** notify event per
+  download attempt — never one per poll. (An entry reaching a state is not a
+  licence to keep re-announcing it; see the `settled` regression that
+  REQ-SG-021's kind list now guards against.)
+- **REQ-SG-046** — `stuck` MUST NOT be terminal. A stuck transfer that later
+  completes MUST return to its pre-stuck status **silently** — a finished
+  download is not news — and the once-per-attempt notify budget MUST reset
+  whenever a new magnet is issued (a grab or a swap), so a genuinely new
+  download can alarm again.
+- **REQ-SG-047** — A chosen infohash **absent** from a successful transfer
+  lookup MUST be treated as stuck with a distinct detail (gone from the
+  client), not as a silent incomplete. Absence is the only signal that
+  distinguishes "deleted by hand / the add never really took" from "still
+  downloading", so the adapter MUST NOT fabricate a 0%-complete entry for a
+  hash the client did not return.
+- **REQ-SG-048** — A transfer lookup that raises MUST leave every entry's
+  status untouched and emit no event — the same resilience rule as
+  REQ-SG-023. A qBittorrent blip must never manufacture a stuck alarm.
+- **REQ-SG-049** — Additive schema changes MUST be applied to an existing
+  database at startup. `create_all()` creates missing tables but never
+  missing columns, so a new mapped column would otherwise leave every
+  existing deployment raising "no such column" while every test still passed
+  (tests build the schema from scratch each run).
+- **REQ-SG-050** — Dry-run mode MUST NOT perform transfer lookups. REQ-SG-026
+  is absolute about never calling the downloader, and
+  `scripts/live_dry_run_test.py` enforces it with a `PoisonDownloader` that
+  raises on any method call, read-only ones included. Nothing is lost: a
+  dry-run poll never persists the ledger, so a stuck flag raised there could
+  not survive to the next poll.
+
+**Explicitly unchanged:** settling stays purely time-based (REQ-SG-012). An
+episode whose transfer is still stuck when the swap window closes is still
+marked `settled` and stops being followed — a deliberate decision, not an
+oversight.
+
 ### Scheduler and health
 
 - **REQ-SG-029** — The service MUST expose `GET /healthz` returning 200 for

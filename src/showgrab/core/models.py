@@ -14,6 +14,7 @@ class Status(str, Enum):
     WAITING = "waiting"
     GRABBED = "grabbed"
     SWAPPED = "swapped"
+    STUCK = "stuck"  # magnet handed over, but the transfer isn't finishing
     SETTLED = "settled"
     SKIPPED_HAVE = "skipped-have"
     SKIPPED_OLD = "skipped-old"
@@ -28,6 +29,15 @@ TERMINAL = {
     Status.SKIPPED_OLD,
     Status.NEEDS_ATTENTION,
     Status.IGNORED,
+}
+
+#: Statuses where a magnet is in qBittorrent's hands and its transfer is worth
+#: following up on (REQ-SG-045). STUCK is deliberately in here and NOT in
+#: TERMINAL: a stalled transfer that recovers must be able to leave the state.
+IN_FLIGHT = {
+    Status.GRABBED,
+    Status.SWAPPED,
+    Status.STUCK,
 }
 
 #: Terminal statuses that warrant exactly one notify event when an entry
@@ -80,6 +90,13 @@ class LedgerEntry:
     chosen_infohash: str | None = None
     grabbed_at: datetime | None = None
     notified: bool = False
+    # --- transfer follow-up (REQ-SG-045..048) ---
+    #: One stuck notify per download attempt; reset when a new magnet is issued.
+    stuck_notified: bool = False
+    #: What to restore on recovery, so a stuck swap doesn't come back as a grab.
+    pre_stuck_status: Status | None = None
+    #: Last observed transfer progress, 0.0-1.0, for the digest and dashboard.
+    download_progress: float | None = None
 
     @property
     def is_episode(self) -> bool:

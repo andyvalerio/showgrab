@@ -31,6 +31,8 @@ class FakeQbittorrent:
         self.expire_next_authed_call = False
         self.login_attempts = 0
         self.next_add_failure_count = 0
+        self.torrents: list[dict] = []  # rows torrents/info will return
+        self.info_queries: list[str] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -61,6 +63,15 @@ class FakeQbittorrent:
         if path == "/api/v2/torrents/delete":
             self.deleted.append(body)
             return httpx.Response(200, text="")
+        if path == "/api/v2/torrents/info":
+            wanted = request.url.params.get("hashes", "")
+            self.info_queries.append(wanted)
+            asked = {h for h in wanted.split("|") if h}
+            # Real qBittorrent returns only what it knows about — a hash it has
+            # never heard of is simply absent, not a zeroed row.
+            return httpx.Response(
+                200, json=[t for t in self.torrents if t["hash"] in asked]
+            )
         if path == "/api/v2/app/version":
             return httpx.Response(200, text="v5.2.3")
         return httpx.Response(404)
@@ -179,3 +190,119 @@ def test_legacy_login_failure_with_plain_text_fails():
     dl = QbittorrentDownloader("http://qbt.local", "admin", "wrong", client=http_client)
     with pytest.raises(QbittorrentError):
         dl.add_magnet("magnet:?xt=urn:btih:X", "/downloads/tv_series/Show")
+
+
+# --- transfer status (REQ-SG-043/044/047) --------------------------------
+
+
+def test_transfer_status_batches_into_one_piped_query():
+    fake = FakeQbittorrent()
+    fake.torrents = [
+        {"hash": "aaa", "progress": 0.5, "state": "downloading", "amount_left": 500},
+        {"hash": "bbb", "progress": 1.0, "state": "stalledUP", "amount_left": 0},
+    ]
+    dl = make_client(fake)
+    out = dl.transfer_status(["AAA", "bbb"])  # REQ-SG-043, and hashes lowercased
+    assert fake.info_queries == ["aaa|bbb"]  # ONE call, not one per hash
+    assert set(out) == {"aaa", "bbb"}
+    assert out["aaa"].progress == 0.5
+    assert out["aaa"].state == "downloading"
+    assert out["aaa"].complete is False
+    assert out["bbb"].complete is True
+
+
+def test_transfer_status_skips_the_round_trip_when_nothing_is_in_flight():
+    fake = FakeQbittorrent()
+    dl = make_client(fake)
+    assert dl.transfer_status([]) == {}
+    assert fake.info_queries == []
+
+
+def test_unknown_hash_is_absent_not_zero_progress():
+    """REQ-SG-047: absence is the signal that a torrent is gone from the
+    client; inventing a 0%-complete row would hide that as 'still downloading'."""
+    fake = FakeQbittorrent()
+    fake.torrents = [{"hash": "aaa", "progress": 0.1, "state": "downloading", "amount_left": 9}]
+    dl = make_client(fake)
+    out = dl.transfer_status(["aaa", "gone"])
+    assert set(out) == {"aaa"}
+    assert "gone" not in out
+
+
+def test_completion_reads_amount_left_not_the_state_string():
+    """REQ-SG-044: 4.x called a finished torrent pausedUP, 5.x calls it
+    stoppedUP, and a 5.x 'downloading' row can already be at amount_left 0.
+    Completion must not depend on which vocabulary the server speaks."""
+    fake = FakeQbittorrent()
+    fake.torrents = [
+        {"hash": "old", "progress": 1.0, "state": "pausedUP", "amount_left": 0},
+        {"hash": "new", "progress": 1.0, "state": "stoppedUP", "amount_left": 0},
+        {"hash": "odd", "progress": 1.0, "state": "downloading", "amount_left": 0},
+        {"hash": "part", "progress": 0.99, "state": "stalledDL", "amount_left": 1024},
+    ]
+    dl = make_client(fake)
+    out = dl.transfer_status(["old", "new", "odd", "part"])
+    assert out["old"].complete is True
+    assert out["new"].complete is True
+    assert out["odd"].complete is True
+    assert out["part"].complete is False
+
+
+def test_transfer_status_falls_back_to_progress_without_amount_left():
+    fake = FakeQbittorrent()
+    fake.torrents = [
+        {"hash": "aaa", "progress": 1.0, "state": "uploading"},
+        {"hash": "bbb", "progress": 0.4, "state": "downloading"},
+    ]
+    dl = make_client(fake)
+    out = dl.transfer_status(["aaa", "bbb"])
+    assert out["aaa"].complete is True
+    assert out["bbb"].complete is False
+
+
+def test_transfer_status_tolerates_missing_and_malformed_fields():
+    """A row we can't read must not crash the poll — REQ-SG-032's spirit."""
+    fake = FakeQbittorrent()
+    fake.torrents = [
+        {"hash": "aaa"},  # no progress, no state, no amount_left
+        {"hash": "bbb", "progress": "not-a-number", "state": None, "amount_left": "x"},
+    ]
+    dl = make_client(fake)
+    out = dl.transfer_status(["aaa", "bbb"])
+    assert out["aaa"].progress == 0.0
+    assert out["aaa"].state == "unknown"
+    assert out["aaa"].complete is False
+    assert out["bbb"].progress == 0.0
+    assert out["bbb"].complete is False
+
+
+def test_transfer_status_reauths_once_on_expired_session():
+    """REQ-SG-018 applies to the new endpoint too."""
+    fake = FakeQbittorrent()
+    fake.torrents = [{"hash": "aaa", "progress": 1.0, "state": "stalledUP", "amount_left": 0}]
+    dl = make_client(fake)
+    dl.transfer_status(["aaa"])
+    assert fake.login_attempts == 1
+    fake.expire_next_authed_call = True
+    out = dl.transfer_status(["aaa"])
+    assert fake.login_attempts == 2
+    assert out["aaa"].complete is True
+
+
+def test_transfer_status_raises_on_a_non_list_body():
+    fake = FakeQbittorrent()
+    dl = make_client(fake)
+
+    def handler(request):
+        if request.url.path == "/api/v2/auth/login":
+            return httpx.Response(204)
+        return httpx.Response(200, json={"error": "nope"})
+
+    dl = QbittorrentDownloader(
+        "http://qbt.local",
+        "admin",
+        "secret",
+        client=httpx.Client(transport=httpx.MockTransport(handler), base_url="http://qbt.local"),
+    )
+    with pytest.raises(QbittorrentError):
+        dl.transfer_status(["aaa"])

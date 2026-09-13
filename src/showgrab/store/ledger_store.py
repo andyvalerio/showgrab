@@ -48,6 +48,9 @@ def _entry_to_row(entry: LedgerEntry, row: LedgerEntryRow) -> None:
     row.chosen_infohash = entry.chosen_infohash
     row.grabbed_at = entry.grabbed_at.isoformat() if entry.grabbed_at else None
     row.notified = entry.notified
+    row.stuck_notified = entry.stuck_notified
+    row.pre_stuck_status = entry.pre_stuck_status.value if entry.pre_stuck_status else None
+    row.download_progress = entry.download_progress
     row.variants_json = json.dumps({ih: _variant_to_dict(v) for ih, v in entry.variants.items()})
 
 
@@ -63,6 +66,9 @@ def _row_to_entry(row: LedgerEntryRow) -> LedgerEntry:
         chosen_infohash=row.chosen_infohash,
         grabbed_at=datetime.fromisoformat(row.grabbed_at) if row.grabbed_at else None,
         notified=row.notified,
+        stuck_notified=bool(row.stuck_notified),
+        pre_stuck_status=Status(row.pre_stuck_status) if row.pre_stuck_status else None,
+        download_progress=row.download_progress,
     )
 
 

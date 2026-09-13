@@ -121,10 +121,13 @@ def _run_poll_inner(
 
     grabbed = sum(1 for e in events if e.kind == "grabbed")
     swapped = sum(1 for e in events if e.kind == "swapped")
+    stuck = sum(1 for e in events if e.kind == "stuck")
     summary = (
         f"{len(releases)} feed items, {len(ledger.all())} episodes tracked, "
         f"{grabbed} grabbed, {swapped} swapped"
     )
+    if stuck:
+        summary += f", {stuck} stuck"
     if not execution_ok:
         summary += " — execution FAILED, nothing persisted this poll"
     activity_log.record(

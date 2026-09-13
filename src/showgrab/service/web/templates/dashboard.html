@@ -27,7 +27,12 @@
     <tr>
       <td>{{ entry.show_name }}</td>
       <td>{% if entry.is_episode %}S{{ "%02d"|format(entry.season) }}E{{ "%02d"|format(entry.episode) }}{% else %}<span class="muted">(unparsable)</span>{% endif %}</td>
-      <td><span class="status status-{{ entry.status.value }}">{{ entry.status.value }}</span></td>
+      <td>
+        <span class="status status-{{ entry.status.value }}">{{ entry.status.value }}</span>
+        {% if entry.status.value == "stuck" and entry.download_progress is not none %}
+        <span class="muted">{{ "%.0f"|format(entry.download_progress * 100) }}%</span>
+        {% endif %}
+      </td>
       <td>
         {% for v in entry.variants.values() %}
           <span class="muted">{{ v.quality.label }}{% if v.is_remux %}/REMUX{% endif %}{% if v.is_repack %}/REPACK{% endif %}</span>{% if not loop.last %}, {% endif %}
@@ -49,7 +54,7 @@
             <button type="submit" class="secondary">Retry</button>
           </form>
           {% endif %}
-          {% if entry.status.value in ("grabbed", "swapped") and entry.variants|length > 1 %}
+          {% if entry.status.value in ("grabbed", "swapped", "stuck") and entry.variants|length > 1 %}
           <form class="inline" method="post" action="/episode/swap">
             <input type="hidden" name="key" value='{{ entry.key | tojson }}'>
             <select name="infohash">

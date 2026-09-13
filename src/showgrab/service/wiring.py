@@ -46,4 +46,15 @@ def build_notifier(settings: Settings) -> SmtpNotifier | None:
 
 
 def build_checks(settings: Settings) -> engine.Checks:
-    return engine.Checks(build_jellyfin(settings), build_tvmaze())
+    """The downloader doubles as the transfer tracker (REQ-SG-045): the engine
+    only ever reads from it through transfer_status(), so this adds no new
+    write path and no second qBittorrent session.
+
+    Except in dry-run, which gets no tracker at all (REQ-SG-050). REQ-SG-026
+    is absolute — a dry-run poll MUST NOT call the downloader, and
+    scripts/live_dry_run_test.py enforces exactly that with a PoisonDownloader
+    that raises on any method call, read-only or not. Nothing is lost: dry-run
+    never persists the ledger, so a stuck flag raised there could not survive
+    to the next poll anyway."""
+    transfers = None if settings.dry_run else build_downloader(settings)
+    return engine.Checks(build_jellyfin(settings), build_tvmaze(), transfers=transfers)

@@ -11,7 +11,7 @@ that trust has to be earned, not assumed).
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Float, Integer, String
+from sqlalchemy import Boolean, Float, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -66,6 +66,14 @@ class LedgerEntryRow(Base):
     grabbed_at: Mapped[str | None] = mapped_column(String, nullable=True)  # ISO-8601
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
     variants_json: Mapped[str] = mapped_column(String, default="{}")
+    # --- transfer follow-up (REQ-SG-045..048). Added after the first release,
+    # so each carries a server_default for the additive migration in db.py to
+    # apply to rows that already exist (REQ-SG-049).
+    stuck_notified: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("0"), nullable=False
+    )
+    pre_stuck_status: Mapped[str | None] = mapped_column(String, nullable=True)
+    download_progress: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class ActivityLogRow(Base):

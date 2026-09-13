@@ -26,6 +26,10 @@ SQLite and a web UI.
   republished RSS item never triggers a redundant download.
 - **Old-episode filter** — cross-checks TVmaze air dates so old reposts in
   the feed get skipped, not re-grabbed.
+- **Download follow-through** — doesn't stop caring once the magnet is handed
+  over. Every poll checks the transfer, and an episode that isn't finishing —
+  a dead swarm, or a torrent that vanished from qBittorrent — is flagged
+  `stuck` and emailed once, then clears itself silently if it recovers.
 - **Dry-run mode** — runs the full decision engine against your real feed and
   library, emails you exactly what it *would* do, and touches nothing. Use it
   to sanity-check your config before going live.

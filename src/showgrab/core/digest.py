@@ -12,13 +12,14 @@ from .models import NotifyEvent
 _TITLES = {
     "grabbed": "Grabbed",
     "swapped": "Swapped",
+    "stuck": "Stuck downloading",
     "skipped-old": "Skipped (too old)",
     "needs-attention": "Needs attention",
 }
 #: The kinds a digest knows how to title, in the order they appear
 #: (REQ-SG-021). This is the notify-event contract: the engine must not emit a
 #: kind outside this list, or the digest would render its raw status string.
-DIGEST_KINDS = ["grabbed", "swapped", "skipped-old", "needs-attention"]
+DIGEST_KINDS = ["grabbed", "swapped", "stuck", "skipped-old", "needs-attention"]
 
 
 def build_digest(events: list[NotifyEvent], *, dry_run: bool = False) -> tuple[str, str] | None:

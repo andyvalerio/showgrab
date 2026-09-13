@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import httpx
 
+from ..core.downloader import TransferStatus
+
 
 class QbittorrentError(RuntimeError):
     pass
@@ -43,6 +45,41 @@ class QbittorrentDownloader:
             "/api/v2/torrents/delete",
             data={"hashes": infohash.lower(), "deleteFiles": "true"},
         )
+
+    def transfer_status(self, infohashes: list[str]) -> dict[str, TransferStatus]:
+        """REQ-SG-043: one batched torrents/info call for every in-flight hash.
+
+        qBittorrent takes a pipe-separated `hashes` filter and returns only the
+        torrents it actually knows about, so a hash missing from the response
+        means the torrent is gone from the client (REQ-SG-047) — it is left out
+        of the result rather than faked as 0% complete."""
+        wanted = [h.lower() for h in infohashes if h]
+        if not wanted:
+            return {}  # nothing in flight: skip the round trip entirely
+        resp = self._authed_request(
+            "GET", "/api/v2/torrents/info", params={"hashes": "|".join(wanted)}
+        )
+        try:
+            rows = resp.json()
+        except ValueError as exc:
+            raise QbittorrentError(f"torrents/info returned a non-JSON body: {exc}") from exc
+        if not isinstance(rows, list):
+            raise QbittorrentError(f"torrents/info returned {type(rows).__name__}, expected a list")
+
+        out: dict[str, TransferStatus] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            infohash = str(row.get("hash", "")).lower()
+            if not infohash:
+                continue
+            out[infohash] = TransferStatus(
+                infohash=infohash,
+                progress=_as_float(row.get("progress")),
+                state=str(row.get("state") or "unknown"),
+                complete=_is_complete(row),
+            )
+        return out
 
     def test_connection(self) -> bool:
         resp = self._authed_request("GET", "/api/v2/app/version")
@@ -92,3 +129,25 @@ def _check_add_result(resp: httpx.Response) -> None:
         return
     if isinstance(data, dict) and data.get("failure_count", 0):
         raise QbittorrentError(f"qBittorrent rejected the magnet: {data}")
+
+
+def _as_float(value) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _is_complete(row: dict) -> bool:
+    """REQ-SG-044: completion is decided from progress/amount_left, never from
+    the `state` string. qBittorrent renamed its finished-but-idle states
+    between generations (4.x `pausedUP` became 5.x `stoppedUP`), so matching on
+    state would silently mis-read one version or the other; progress and
+    amount_left mean the same thing in both."""
+    amount_left = row.get("amount_left")
+    if amount_left is not None:
+        try:
+            return int(amount_left) <= 0
+        except (TypeError, ValueError):
+            pass
+    return _as_float(row.get("progress")) >= 1.0
