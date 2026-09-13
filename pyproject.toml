@@ -1,6 +1,6 @@
 [project]
 name = "showgrab"
-version = "0.1.0"
+version = "0.2.0"
 description = "Watch a showRSS feed and download new TV episodes through qBittorrent at a preferred quality, converging (up or down) as releases appear."
 requires-python = ">=3.12"
 license = "MIT"
